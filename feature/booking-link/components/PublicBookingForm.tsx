@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
+import { timeSlots } from "@/helper/utils/timeOptions";
 import { submitPublicBooking } from "@/feature/booking-link/actions/publicBookingActions";
 import type { PublicBookingData } from "@/feature/booking-link/services/getBookingLinkBySlug";
 
@@ -23,11 +24,17 @@ export function PublicBookingForm({
     menuId: data.menus[0]?.id ?? "",
     staffId: "",
     date: "",
+    interval: 30,
     startTime: "10:00",
     guestName: "",
     guestPhone: "",
     note: "",
   });
+
+  const slots = useMemo(
+    () => timeSlots(form.interval, 9 * 60, 20 * 60),
+    [form.interval],
+  );
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -139,13 +146,40 @@ export function PublicBookingForm({
           />
         </div>
         <div>
-          <Label>ご希望時刻</Label>
-          <Input
-            type="time"
-            value={form.startTime}
-            onChange={(e) => set("startTime", e.target.value)}
-          />
+          <Label>時間間隔</Label>
+          <Select
+            value={form.interval}
+            onChange={(e) => {
+              const iv = Number(e.target.value);
+              setForm((f) => {
+                const ns = timeSlots(iv, 9 * 60, 20 * 60);
+                return {
+                  ...f,
+                  interval: iv,
+                  startTime: ns.includes(f.startTime) ? f.startTime : ns[0],
+                };
+              });
+            }}
+          >
+            <option value={15}>15分単位</option>
+            <option value={30}>30分単位</option>
+            <option value={60}>60分単位</option>
+          </Select>
         </div>
+      </div>
+
+      <div>
+        <Label>ご希望時刻</Label>
+        <Select
+          value={form.startTime}
+          onChange={(e) => set("startTime", e.target.value)}
+        >
+          {slots.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
