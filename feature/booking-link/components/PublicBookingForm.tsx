@@ -102,7 +102,7 @@ export function PublicBookingForm({
     if (guest.note) fd.set("note", guest.note);
     startSubmit(async () => {
       const res = await submitPublicBooking(null, fd);
-      if (res.ok) router.push("/booking-complete");
+      if (res.ok) router.push(`/booking-complete?shop=${shopId}`);
       else setError(res.error);
     });
   }
@@ -256,12 +256,12 @@ export function PublicBookingForm({
                             onClick={() =>
                               setPicked({ date: d.date, time: t })
                             }
-                            className={`flex h-9 w-full items-center justify-center text-base transition-colors ${
+                            className={`flex h-9 w-full items-center justify-center text-lg font-semibold transition-colors ${
                               isPicked
-                                ? "bg-accent text-accent-fg"
-                                : "text-accent hover:bg-accent/15"
+                                ? "bg-danger text-white"
+                                : "text-danger hover:bg-danger/10"
                             }`}
-                            aria-label={`${d.label} ${t} を予約`}
+                            aria-label={`${d.label} ${t} 予約可能`}
                           >
                             {isPicked ? "選択中" : "◎"}
                           </button>

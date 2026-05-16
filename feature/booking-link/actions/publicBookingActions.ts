@@ -276,6 +276,7 @@ export async function submitPublicBooking(
         endAt,
         status: 0,
         source: "public",
+        confirmed: false,
         guestName: input.guestName,
         guestPhone: input.guestPhone,
         note: input.note ?? null,
