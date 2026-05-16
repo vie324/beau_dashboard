@@ -127,13 +127,24 @@ export function ReservationBoard({
 
   const noStaff = formData.staffs.length === 0;
 
+  const unconfirmed = reservations.filter(
+    (r) => !r.confirmed && ![3, 4, 99].includes(r.status),
+  ).length;
+
   return (
     <>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <DateNav date={date} today={today} />
-        <Button size="sm" onClick={() => setModal({ mode: "create" })}>
-          ＋ 新規予約
-        </Button>
+        <div className="flex items-center gap-3">
+          {unconfirmed > 0 && (
+            <span className="rounded-lg border border-warn/40 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
+              未確認 {unconfirmed}件
+            </span>
+          )}
+          <Button size="sm" onClick={() => setModal({ mode: "create" })}>
+            ＋ 新規予約
+          </Button>
+        </div>
       </div>
 
       {noStaff && (
@@ -293,7 +304,7 @@ export function ReservationBoard({
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
                             : "border-line bg-elevated"
-                        }`}
+                        } ${!r.confirmed && !cancelled ? "ring-2 ring-warn" : ""}`}
                         style={{
                           left,
                           width,
@@ -319,6 +330,11 @@ export function ReservationBoard({
                         {r.menu && (
                           <div className="truncate text-faint">
                             {r.menu.name}
+                          </div>
+                        )}
+                        {!r.confirmed && !cancelled && (
+                          <div className="mt-auto truncate font-semibold text-warn">
+                            未確認
                           </div>
                         )}
                       </button>

@@ -152,6 +152,8 @@ model Appointment {
   isMemberJoin  Boolean      @default(false)
   // manual | public
   source        String       @default("manual")
+  // false = 確認連絡が未対応（主にオンライン予約）
+  confirmed     Boolean      @default(true)
   guestName     String?
   guestPhone    String?
   createdAt     DateTime     @default(now())

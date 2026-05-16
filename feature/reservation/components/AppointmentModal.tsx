@@ -13,6 +13,7 @@ import { appointmentSchema } from "@/feature/reservation/schema/reservationSchem
 import {
   saveAppointment,
   deleteAppointment,
+  setAppointmentConfirmed,
 } from "@/feature/reservation/actions/reservationActions";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 
@@ -163,6 +164,46 @@ export function AppointmentModal({
       title={isEdit ? "予約の編集" : "新規予約"}
     >
       <div className="space-y-4">
+        {isEdit && initial && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-base/40 px-3 py-2.5">
+            <div className="text-sm">
+              <span className="text-muted">確認状況：</span>
+              {initial.confirmed ? (
+                <span className="font-medium text-ok">確認済み</span>
+              ) : (
+                <span className="font-medium text-warn">未確認</span>
+              )}
+              {(initial.guestPhone || initial.customer?.phone) && (
+                <span className="ml-3 text-muted">
+                  TEL：{initial.guestPhone ?? initial.customer?.phone}
+                </span>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  setError(null);
+                  const r = await setAppointmentConfirmed(
+                    initial.id,
+                    !initial.confirmed,
+                  );
+                  if (r.ok) {
+                    onClose();
+                    router.refresh();
+                  } else {
+                    setError(r.error);
+                  }
+                })
+              }
+            >
+              {initial.confirmed ? "未確認に戻す" : "確認済みにする"}
+            </Button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>日付</Label>

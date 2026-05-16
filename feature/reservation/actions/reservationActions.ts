@@ -170,3 +170,25 @@ export async function deleteAppointment(id: number): Promise<ActionResult> {
   revalidatePath("/reservation");
   return { ok: true };
 }
+
+export async function setAppointmentConfirmed(
+  id: number,
+  confirmed: boolean,
+): Promise<ActionResult> {
+  if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
+
+  const shopId = await getActiveShopId();
+  const existing = await db.appointment.findFirst({
+    where: { id, shopId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, error: "予約が見つかりません" };
+
+  try {
+    await db.appointment.update({ where: { id }, data: { confirmed } });
+  } catch {
+    return { ok: false, error: "更新に失敗しました" };
+  }
+  revalidatePath("/reservation");
+  return { ok: true };
+}
