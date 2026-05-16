@@ -10,24 +10,24 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Beau — modern dark palette (distinct from the reference's light/pastel shadcn theme)
-        base: "#0b0d12",
-        surface: "#14171f",
-        elevated: "#1b1f29",
-        line: "#272c39",
-        ink: "#e8eaf0",
-        muted: "#8b92a4",
-        faint: "#5b6276",
+        // Beau — warm, light & calm palette (salon / clinic inspired).
+        base: "#f4efe6", // warm ivory page
+        surface: "#fffefb", // cards
+        elevated: "#efe8da", // hover / inputs
+        line: "#e4dccb", // borders
+        ink: "#3b352c", // primary text (soft warm brown, not black)
+        muted: "#6f6757",
+        faint: "#9c937f",
         accent: {
-          DEFAULT: "#d8b06a",
-          soft: "#3a3119",
-          hover: "#e6c386",
-          fg: "#1a1305",
+          DEFAULT: "#c19a5b", // warm gold
+          soft: "#f1e7d3", // light tint background
+          hover: "#a9803f",
+          fg: "#2b2114", // dark text on gold
         },
-        ok: "#5fb98a",
-        warn: "#e0a64b",
-        danger: "#e0696b",
-        info: "#6f9bd8",
+        ok: "#3f9d6b",
+        warn: "#c6892f",
+        danger: "#c8554f",
+        info: "#5580ad",
       },
       fontFamily: {
         sans: [
@@ -46,7 +46,8 @@ const config: Config = {
         xl: "0.625rem",
       },
       boxShadow: {
-        panel: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 18px 40px -24px rgba(0,0,0,0.7)",
+        panel:
+          "0 1px 2px 0 rgba(80,60,30,0.04), 0 14px 32px -20px rgba(80,60,30,0.22)",
       },
       keyframes: {
         "fade-in": {

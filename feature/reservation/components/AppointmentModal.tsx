@@ -6,6 +6,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { STATUS_OPTIONS } from "@/helper/utils/status";
+import { timeSlots } from "@/helper/utils/timeOptions";
+
+const TIME_SLOTS_15 = timeSlots(15);
 import { appointmentSchema } from "@/feature/reservation/schema/reservationSchema";
 import {
   saveAppointment,
@@ -166,12 +169,20 @@ export function AppointmentModal({
             />
           </div>
           <div>
-            <Label>開始時刻</Label>
-            <Input
-              type="time"
+            <Label>開始時刻（15分単位）</Label>
+            <Select
               value={form.startTime}
               onChange={(e) => set("startTime", e.target.value)}
-            />
+            >
+              {(TIME_SLOTS_15.includes(form.startTime)
+                ? TIME_SLOTS_15
+                : [form.startTime, ...TIME_SLOTS_15]
+              ).map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
 
