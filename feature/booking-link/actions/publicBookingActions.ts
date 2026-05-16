@@ -10,6 +10,175 @@ export type PublicResult =
   | { ok: true }
   | { ok: false; error: string };
 
+export type AvailabilityDay = {
+  date: string;
+  label: string;
+  dow: string;
+  weekend: 0 | 6 | null;
+  avail: Record<string, boolean>;
+};
+
+export type AvailabilityResult =
+  | { ok: true; times: string[]; days: AvailabilityDay[] }
+  | { ok: false; error: string };
+
+function hm(t?: string | null): number | null {
+  if (!t) return null;
+  const [h, m] = t.split(":").map(Number);
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return null;
+  return h * 60 + m;
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  base.setUTCDate(base.getUTCDate() + days);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(base);
+}
+
+/** ◎/× weekly availability for the public booking calendar. */
+export async function getPublicAvailability(input: {
+  slug: string;
+  shopId: number;
+  menuId: number;
+  interval: number; // 15 | 30 | 60
+  weekStart: string; // YYYY-MM-DD (day 0 of the 7-day view)
+  staffId?: number | null;
+}): Promise<AvailabilityResult> {
+  const interval = [15, 30, 60].includes(input.interval)
+    ? input.interval
+    : 30;
+
+  const link = await db.bookingLink.findFirst({
+    where: { slug: input.slug, isActive: true, deletedAt: null },
+  });
+  if (!link) return { ok: false, error: "この予約リンクは現在利用できません" };
+
+  const shop = await db.shop.findFirst({
+    where: {
+      id: input.shopId,
+      brandId: link.brandId,
+      deletedAt: null,
+      ...(link.shopId ? { id: link.shopId } : {}),
+    },
+    select: {
+      id: true,
+      openTime: true,
+      closeTime: true,
+      breakStart: true,
+      breakEnd: true,
+    },
+  });
+  if (!shop) return { ok: false, error: "店舗の指定が正しくありません" };
+
+  const allowed = parseMenuIds(link.allowedMenuIds);
+  const menu = await db.menu.findFirst({
+    where: {
+      id: input.menuId,
+      deletedAt: null,
+      isPublic: true,
+      OR: [{ shopId: null }, { shopId: shop.id }],
+      ...(allowed.length ? { id: { in: allowed } } : {}),
+    },
+    select: { id: true, durationMin: true },
+  });
+  if (!menu) return { ok: false, error: "メニューの指定が正しくありません" };
+
+  const openMin = hm(shop.openTime) ?? 9 * 60;
+  const closeMin = hm(shop.closeTime) ?? 21 * 60;
+  const bStart = hm(shop.breakStart);
+  const bEnd = hm(shop.breakEnd);
+
+  const allStaff = await db.staff.findMany({
+    where: { shopId: shop.id, deletedAt: null, isBookable: true },
+    select: { id: true },
+  });
+  let candidates = allStaff.map((s) => s.id);
+  if (link.requireStaffSelection && input.staffId) {
+    candidates = candidates.filter((id) => id === input.staffId);
+  }
+
+  // Appointments across the 7-day window (blocking statuses only).
+  const winStart = jstDateTimeToDate(input.weekStart, "00:00");
+  const winEnd = new Date(winStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const appts = await db.appointment.findMany({
+    where: {
+      shopId: shop.id,
+      deletedAt: null,
+      status: { notIn: [3, 4, 99] },
+      startAt: { gte: winStart, lt: winEnd },
+    },
+    select: { staffId: true, startAt: true, endAt: true },
+  });
+  const apptMs = appts.map((a) => ({
+    staffId: a.staffId,
+    s: new Date(a.startAt).getTime(),
+    e: new Date(a.endAt).getTime(),
+  }));
+
+  const now = Date.now();
+  const times: string[] = [];
+  for (let m = openMin; m + menu.durationMin <= closeMin; m += interval) {
+    times.push(
+      `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
+        m % 60,
+      ).padStart(2, "0")}`,
+    );
+  }
+
+  const days: AvailabilityDay[] = [];
+
+  for (let i = 0; i < 7; i++) {
+    const date = shiftYmd(input.weekStart, i);
+    const [yy, mm, dd] = date.split("-").map(Number);
+    const noon = new Date(Date.UTC(yy, mm - 1, dd, 3, 0, 0));
+    const dow = new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      weekday: "short",
+    }).format(noon);
+    const dowNum = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay();
+    const avail: Record<string, boolean> = {};
+    for (const t of times) {
+      const tMin = hm(t)!;
+      const slotStart = jstDateTimeToDate(date, t).getTime();
+      const slotEnd = slotStart + menu.durationMin * 60000;
+      const endMin = tMin + menu.durationMin;
+      let ok = slotStart >= now;
+      if (ok && bStart != null && bEnd != null) {
+        if (tMin < bEnd && endMin > bStart) ok = false;
+      }
+      if (ok) {
+        if (candidates.length) {
+          ok = candidates.some(
+            (sid) =>
+              !apptMs.some(
+                (a) =>
+                  a.staffId === sid && a.s < slotEnd && a.e > slotStart,
+              ),
+          );
+        } else {
+          ok = !apptMs.some((a) => a.s < slotEnd && a.e > slotStart);
+        }
+      }
+      avail[t] = ok;
+    }
+    days.push({
+      date,
+      label: `${mm}/${dd}`,
+      dow,
+      weekend: dowNum === 0 ? 0 : dowNum === 6 ? 6 : null,
+      avail,
+    });
+  }
+
+  return { ok: true, times, days };
+}
+
 function parseMenuIds(raw: string | null): number[] {
   if (!raw) return [];
   try {

@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/reservation", label: "予約管理" },
   { href: "/booking-links", label: "強制リンク" },
   { href: "/settings", label: "設定" },
+  { href: "/help", label: "ヘルプ" },
 ];
 
 export function TopNav() {
