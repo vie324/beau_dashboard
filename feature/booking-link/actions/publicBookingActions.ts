@@ -244,6 +244,8 @@ export async function submitPublicBooking(
   const startAt = jstDateTimeToDate(input.date, input.startTime);
   const endAt = addMinutes(startAt, menu.durationMin);
 
+  let assignedStaffId: number | null = input.staffId ?? null;
+
   if (input.staffId) {
     const staff = await db.staff.findFirst({
       where: { id: input.staffId, shopId: shop.id, deletedAt: null },
@@ -263,6 +265,33 @@ export async function submitPublicBooking(
         error: "指定の時間帯は予約が埋まっています。別の時間をお選びください",
       };
     }
+  } else {
+    // 指名なし: 設定の割当優先順（allocateOrder 昇順）で空きスタッフへ自動割当。
+    const staffs = await db.staff.findMany({
+      where: { shopId: shop.id, deletedAt: null, isBookable: true },
+      orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
+      select: { id: true },
+    });
+    if (staffs.length) {
+      for (const s of staffs) {
+        const a = await checkStaffAvailability({
+          shopId: shop.id,
+          staffId: s.id,
+          startAt,
+          endAt,
+        });
+        if (a.available) {
+          assignedStaffId = s.id;
+          break;
+        }
+      }
+      if (assignedStaffId == null) {
+        return {
+          ok: false,
+          error: "ご指定の時間は満席です。別の時間をお選びください",
+        };
+      }
+    }
   }
 
   try {
@@ -270,7 +299,7 @@ export async function submitPublicBooking(
       data: {
         shopId: shop.id,
         menuId: menu.id,
-        staffId: input.staffId ?? null,
+        staffId: assignedStaffId,
         bookingLinkId: link.id,
         startAt,
         endAt,

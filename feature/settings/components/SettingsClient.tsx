@@ -149,7 +149,7 @@ export function SettingsClient({
       {tab === "staff" && (
         <Section
           title={`スタッフ一覧（${activeShopName}）`}
-          hint="表示中の店舗のスタッフです。店舗は右上のセレクタで切り替えられます。"
+          hint="表示中の店舗のスタッフです。指名なし予約は「割当優先順」が小さい人から空いている順で自動割当されます。"
           onAdd={() =>
             setModal(
               <StaffForm
@@ -175,7 +175,7 @@ export function SettingsClient({
               }
               meta={
                 <span className="flex items-center gap-2 text-faint">
-                  割当順 {s.allocateOrder}
+                  割当優先順 {s.allocateOrder}
                   {s.isBookable ? (
                     <Badge className="border-ok/30 bg-ok/15 text-ok">
                       予約可
@@ -584,7 +584,7 @@ function StaffForm({
               className="h-10 w-full cursor-pointer rounded-xl border border-line bg-base"
             />
           </Field>
-          <Field label="割当順">
+          <Field label="割当優先順（小さいほど優先）">
             <Input
               type="number"
               min={0}
