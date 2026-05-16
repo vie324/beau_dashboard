@@ -1,12 +1,36 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
-import { timeSlots } from "@/helper/utils/timeOptions";
-import { submitPublicBooking } from "@/feature/booking-link/actions/publicBookingActions";
+import {
+  submitPublicBooking,
+  getPublicAvailability,
+  type AvailabilityResult,
+} from "@/feature/booking-link/actions/publicBookingActions";
 import type { PublicBookingData } from "@/feature/booking-link/services/getBookingLinkBySlug";
+
+function todayJst(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  base.setUTCDate(base.getUTCDate() + days);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(base);
+}
 
 export function PublicBookingForm({
   slug,
@@ -16,76 +40,74 @@ export function PublicBookingForm({
   data: PublicBookingData;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [today] = useState(todayJst);
+  const [weekStart, setWeekStart] = useState(todayJst);
+
+  const [shopId, setShopId] = useState<number>(data.shops[0]?.id ?? 0);
+  const [menuId, setMenuId] = useState<number>(data.menus[0]?.id ?? 0);
+  const [interval, setIntervalMin] = useState(30);
+  const [staffId, setStaffId] = useState<string>("");
+
+  const [avail, setAvail] = useState<AvailabilityResult | null>(null);
+  const [loading, startLoad] = useTransition();
+
+  const [picked, setPicked] = useState<{ date: string; time: string } | null>(
+    null,
+  );
+  const [guest, setGuest] = useState({ name: "", phone: "", note: "" });
+  const [submitting, startSubmit] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
-    shopId: data.shops[0]?.id ?? "",
-    menuId: data.menus[0]?.id ?? "",
-    staffId: "",
-    date: "",
-    interval: 30,
-    startTime: "10:00",
-    guestName: "",
-    guestPhone: "",
-    note: "",
-  });
-
-  const slots = useMemo(
-    () => timeSlots(form.interval, 9 * 60, 20 * 60),
-    [form.interval],
+  const staffOptions = useMemo(
+    () => data.staffsByShop[shopId] ?? [],
+    [shopId, data.staffsByShop],
   );
 
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    if (!shopId || !menuId) return;
+    setPicked(null);
+    startLoad(async () => {
+      const r = await getPublicAvailability({
+        slug,
+        shopId,
+        menuId,
+        interval,
+        weekStart,
+        staffId: staffId ? Number(staffId) : null,
+      });
+      setAvail(r);
+    });
+  }, [slug, shopId, menuId, interval, weekStart, staffId]);
 
-  const staffOptions = useMemo(() => {
-    const sid = Number(form.shopId);
-    return data.staffsByShop[sid] ?? [];
-  }, [form.shopId, data.staffsByShop]);
-
-  function submit() {
+  function confirm() {
     setError(null);
-    if (!form.shopId) {
-      setError("店舗を選択してください");
-      return;
-    }
-    if (!form.menuId) {
-      setError("メニューを選択してください");
-      return;
-    }
-    if (!form.guestName.trim()) {
+    if (!picked) return;
+    if (!guest.name.trim()) {
       setError("お名前を入力してください");
       return;
     }
-    if (form.guestPhone.trim().length < 8) {
+    if (guest.phone.trim().length < 8) {
       setError("電話番号を正しく入力してください");
-      return;
-    }
-    if (!form.date) {
-      setError("ご希望日を選択してください");
       return;
     }
     const fd = new FormData();
     fd.set("slug", slug);
-    fd.set("shopId", String(form.shopId));
-    fd.set("menuId", String(form.menuId));
-    if (form.staffId) fd.set("staffId", String(form.staffId));
-    fd.set("date", form.date);
-    fd.set("startTime", form.startTime);
-    fd.set("guestName", form.guestName);
-    fd.set("guestPhone", form.guestPhone);
-    if (form.note) fd.set("note", form.note);
-
-    startTransition(async () => {
+    fd.set("shopId", String(shopId));
+    fd.set("menuId", String(menuId));
+    if (staffId) fd.set("staffId", staffId);
+    fd.set("date", picked.date);
+    fd.set("startTime", picked.time);
+    fd.set("guestName", guest.name);
+    fd.set("guestPhone", guest.phone);
+    if (guest.note) fd.set("note", guest.note);
+    startSubmit(async () => {
       const res = await submitPublicBooking(null, fd);
-      if (res.ok) {
-        router.push("/booking-complete");
-      } else {
-        setError(res.error);
-      }
+      if (res.ok) router.push("/booking-complete");
+      else setError(res.error);
     });
   }
+
+  const canGoPrev = weekStart > today;
 
   return (
     <div className="space-y-4">
@@ -93,8 +115,8 @@ export function PublicBookingForm({
         <div>
           <Label>店舗</Label>
           <Select
-            value={form.shopId}
-            onChange={(e) => set("shopId", Number(e.target.value))}
+            value={shopId}
+            onChange={(e) => setShopId(Number(e.target.value))}
           >
             {data.shops.map((s) => (
               <option key={s.id} value={s.id}>
@@ -108,8 +130,8 @@ export function PublicBookingForm({
       <div>
         <Label>メニュー</Label>
         <Select
-          value={form.menuId}
-          onChange={(e) => set("menuId", Number(e.target.value))}
+          value={menuId}
+          onChange={(e) => setMenuId(Number(e.target.value))}
         >
           {data.menus.map((m) => (
             <option key={m.id} value={m.id}>
@@ -119,47 +141,28 @@ export function PublicBookingForm({
         </Select>
       </div>
 
-      {data.link.requireStaffSelection && (
-        <div>
-          <Label>ご希望スタッフ</Label>
-          <Select
-            value={form.staffId}
-            onChange={(e) => set("staffId", e.target.value)}
-          >
-            <option value="">指名なし</option>
-            {staffOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label>ご希望日</Label>
-          <Input
-            type="date"
-            value={form.date}
-            onChange={(e) => set("date", e.target.value)}
-          />
-        </div>
+        {data.link.requireStaffSelection && (
+          <div>
+            <Label>ご希望スタッフ</Label>
+            <Select
+              value={staffId}
+              onChange={(e) => setStaffId(e.target.value)}
+            >
+              <option value="">指名なし</option>
+              {staffOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div>
           <Label>時間間隔</Label>
           <Select
-            value={form.interval}
-            onChange={(e) => {
-              const iv = Number(e.target.value);
-              setForm((f) => {
-                const ns = timeSlots(iv, 9 * 60, 20 * 60);
-                return {
-                  ...f,
-                  interval: iv,
-                  startTime: ns.includes(f.startTime) ? f.startTime : ns[0],
-                };
-              });
-            }}
+            value={interval}
+            onChange={(e) => setIntervalMin(Number(e.target.value))}
           >
             <option value={15}>15分単位</option>
             <option value={30}>30分単位</option>
@@ -168,59 +171,176 @@ export function PublicBookingForm({
         </div>
       </div>
 
-      <div>
-        <Label>ご希望時刻</Label>
-        <Select
-          value={form.startTime}
-          onChange={(e) => set("startTime", e.target.value)}
+      {/* Week navigation */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          disabled={!canGoPrev || loading}
+          onClick={() => setWeekStart((w) => shiftYmd(w, -7))}
+          className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
         >
-          {slots.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </Select>
+          ‹ 前の一週間
+        </button>
+        <span className="text-xs font-medium text-muted">
+          {weekStart.replace(/-/g, "/")} 〜
+        </span>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => setWeekStart((w) => shiftYmd(w, 7))}
+          className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
+        >
+          次の一週間 ›
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label>お名前</Label>
-          <Input
-            required
-            value={form.guestName}
-            onChange={(e) => set("guestName", e.target.value)}
-            placeholder="山田 太郎"
-          />
+      {/* Availability grid */}
+      <div className="overflow-x-auto rounded-xl border border-line">
+        {loading && (
+          <p className="px-3 py-10 text-center text-sm text-faint">
+            空き状況を読み込み中…
+          </p>
+        )}
+        {!loading && avail && !avail.ok && (
+          <p className="px-3 py-10 text-center text-sm text-danger">
+            {avail.error}
+          </p>
+        )}
+        {!loading && avail && avail.ok && avail.times.length === 0 && (
+          <p className="px-3 py-10 text-center text-sm text-faint">
+            予約可能な時間がありません。営業時間をご確認ください。
+          </p>
+        )}
+        {!loading && avail && avail.ok && avail.times.length > 0 && (
+          <table className="w-full min-w-[560px] border-collapse text-center text-xs">
+            <thead>
+              <tr className="bg-base/60">
+                <th className="sticky left-0 z-10 w-14 bg-base/60 px-2 py-2 font-medium text-faint">
+                  時間
+                </th>
+                {avail.days.map((d) => (
+                  <th
+                    key={d.date}
+                    className={`px-1 py-2 font-medium ${
+                      d.weekend === 0
+                        ? "text-danger"
+                        : d.weekend === 6
+                          ? "text-info"
+                          : "text-muted"
+                    }`}
+                  >
+                    <div>{d.label}</div>
+                    <div className="text-[10px]">({d.dow})</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {avail.times.map((t) => (
+                <tr key={t} className="border-t border-line/70">
+                  <td className="sticky left-0 z-10 bg-surface px-2 py-1.5 font-medium tabular-nums text-muted">
+                    {t}
+                  </td>
+                  {avail.days.map((d) => {
+                    const free = d.avail[t];
+                    const isPicked =
+                      picked?.date === d.date && picked?.time === t;
+                    return (
+                      <td
+                        key={d.date}
+                        className="border-l border-line/60 p-0"
+                      >
+                        {free ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPicked({ date: d.date, time: t })
+                            }
+                            className={`flex h-9 w-full items-center justify-center text-base transition-colors ${
+                              isPicked
+                                ? "bg-accent text-accent-fg"
+                                : "text-accent hover:bg-accent/15"
+                            }`}
+                            aria-label={`${d.label} ${t} を予約`}
+                          >
+                            {isPicked ? "選択中" : "◎"}
+                          </button>
+                        ) : (
+                          <div className="flex h-9 w-full items-center justify-center text-faint/60">
+                            ×
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Guest details once a slot is chosen */}
+      {picked && (
+        <div className="animate-fade-in space-y-4 rounded-xl border border-accent/40 bg-accent/5 p-4">
+          <p className="text-sm font-medium text-ink">
+            選択中：{picked.date.replace(/-/g, "/")}　{picked.time}〜
+            <button
+              type="button"
+              onClick={() => setPicked(null)}
+              className="ml-3 text-xs text-accent underline"
+            >
+              選び直す
+            </button>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>お名前</Label>
+              <Input
+                required
+                value={guest.name}
+                onChange={(e) =>
+                  setGuest({ ...guest, name: e.target.value })
+                }
+                placeholder="山田 太郎"
+              />
+            </div>
+            <div>
+              <Label>電話番号</Label>
+              <Input
+                required
+                type="tel"
+                value={guest.phone}
+                onChange={(e) =>
+                  setGuest({ ...guest, phone: e.target.value })
+                }
+                placeholder="090-0000-0000"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>ご要望（任意）</Label>
+            <Textarea
+              value={guest.note}
+              onChange={(e) =>
+                setGuest({ ...guest, note: e.target.value })
+              }
+            />
+          </div>
+          {error && (
+            <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <Button
+            className="w-full"
+            onClick={confirm}
+            disabled={submitting}
+          >
+            {submitting ? "送信中…" : "この内容で予約する"}
+          </Button>
         </div>
-        <div>
-          <Label>電話番号</Label>
-          <Input
-            required
-            type="tel"
-            value={form.guestPhone}
-            onChange={(e) => set("guestPhone", e.target.value)}
-            placeholder="090-0000-0000"
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label>ご要望（任意）</Label>
-        <Textarea
-          value={form.note}
-          onChange={(e) => set("note", e.target.value)}
-        />
-      </div>
-
-      {error && (
-        <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {error}
-        </p>
       )}
-
-      <Button className="w-full" onClick={submit} disabled={pending}>
-        {pending ? "送信中…" : "この内容で予約する"}
-      </Button>
     </div>
   );
 }
