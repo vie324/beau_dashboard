@@ -44,6 +44,7 @@ export function AppointmentModal({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [salesTouched, setSalesTouched] = useState(false);
 
   const isEdit = Boolean(initial);
 
@@ -104,8 +105,9 @@ export function AppointmentModal({
       staffId: form.staffId || undefined,
       customerId: form.customerId || undefined,
       visitSourceId: form.visitSourceId || undefined,
-      guestName: form.guestName || undefined,
-      guestPhone: form.guestPhone || undefined,
+      // A registered customer and a free-text guest are mutually exclusive.
+      guestName: form.customerId ? undefined : form.guestName || undefined,
+      guestPhone: form.customerId ? undefined : form.guestPhone || undefined,
       status: form.status,
       sales: form.sales === "" ? undefined : form.sales,
       note: form.note || undefined,
@@ -185,8 +187,7 @@ export function AppointmentModal({
                   ...f,
                   menuId: id,
                   durationMin: m?.durationMin ?? f.durationMin,
-                  sales:
-                    f.sales === "" && m ? m.price : f.sales,
+                  sales: !salesTouched && m ? m.price : f.sales,
                 }));
               }}
             >
@@ -283,12 +284,13 @@ export function AppointmentModal({
               type="number"
               min={0}
               value={form.sales}
-              onChange={(e) =>
+              onChange={(e) => {
+                setSalesTouched(true);
                 set(
                   "sales",
                   e.target.value === "" ? "" : Number(e.target.value),
-                )
-              }
+                );
+              }}
               placeholder="0"
             />
           </div>

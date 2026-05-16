@@ -79,15 +79,27 @@ export async function saveBookingLink(
     }),
   };
 
-  if (input.id) {
-    const existing = await db.bookingLink.findFirst({
-      where: { id: input.id, brandId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!existing) return { ok: false, error: "リンクが見つかりません" };
-    await db.bookingLink.update({ where: { id: input.id }, data });
-  } else {
-    await db.bookingLink.create({ data });
+  try {
+    if (input.id) {
+      const existing = await db.bookingLink.findFirst({
+        where: { id: input.id, brandId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!existing) return { ok: false, error: "リンクが見つかりません" };
+      await db.bookingLink.update({ where: { id: input.id }, data });
+    } else {
+      await db.bookingLink.create({ data });
+    }
+  } catch (e) {
+    if (
+      e &&
+      typeof e === "object" &&
+      "code" in e &&
+      (e as { code?: string }).code === "P2002"
+    ) {
+      return { ok: false, error: `slug「${input.slug}」は既に使われています` };
+    }
+    return { ok: false, error: "保存に失敗しました。時間をおいて再度お試しください" };
   }
 
   revalidatePath("/booking-links");
@@ -106,7 +118,11 @@ export async function toggleBookingLink(
   });
   if (!existing) return { ok: false, error: "リンクが見つかりません" };
 
-  await db.bookingLink.update({ where: { id }, data: { isActive } });
+  try {
+    await db.bookingLink.update({ where: { id }, data: { isActive } });
+  } catch {
+    return { ok: false, error: "状態の変更に失敗しました" };
+  }
   revalidatePath("/booking-links");
   return { ok: true };
 }
@@ -120,10 +136,14 @@ export async function deleteBookingLink(id: number): Promise<ActionResult> {
   });
   if (!existing) return { ok: false, error: "リンクが見つかりません" };
 
-  await db.bookingLink.update({
-    where: { id },
-    data: { deletedAt: new Date() },
-  });
+  try {
+    await db.bookingLink.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  } catch {
+    return { ok: false, error: "削除に失敗しました" };
+  }
   revalidatePath("/booking-links");
   return { ok: true };
 }

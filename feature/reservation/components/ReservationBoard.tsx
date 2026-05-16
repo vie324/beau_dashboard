@@ -8,10 +8,9 @@ import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 
-const START_MIN = 9 * 60; // 09:00
-const END_MIN = 21 * 60; // 21:00
+const BASE_START = 9 * 60; // 09:00 (default visible window)
+const BASE_END = 21 * 60; // 21:00
 const PX_PER_MIN = 1.1;
-const TOTAL_PX = (END_MIN - START_MIN) * PX_PER_MIN;
 
 function jstMinutes(d: Date): number {
   const t = new Intl.DateTimeFormat("en-GB", {
@@ -62,11 +61,29 @@ export function ReservationBoard({
     return cols;
   }, [formData.staffs, reservations]);
 
+  // Expand the visible window so reservations before 09:00 / after 21:00
+  // are never hidden or unclickable.
+  const { startMin, endMin } = useMemo(() => {
+    let start = BASE_START;
+    let end = BASE_END;
+    for (const r of reservations) {
+      const s = jstMinutes(r.startAt);
+      const e = jstMinutes(r.endAt);
+      if (s < start) start = Math.floor(s / 60) * 60;
+      if (e > end) end = Math.ceil(e / 60) * 60;
+    }
+    return {
+      startMin: Math.max(0, start),
+      endMin: Math.min(24 * 60, end),
+    };
+  }, [reservations]);
+  const totalPx = (endMin - startMin) * PX_PER_MIN;
+
   const hours = useMemo(() => {
     const arr: number[] = [];
-    for (let m = START_MIN; m <= END_MIN; m += 60) arr.push(m);
+    for (let m = startMin; m <= endMin; m += 60) arr.push(m);
     return arr;
-  }, []);
+  }, [startMin, endMin]);
 
   const byColumn = (staffId: number | null) =>
     reservations.filter((r) => (r.staffId ?? null) === staffId);
@@ -85,12 +102,12 @@ export function ReservationBoard({
           {/* Time gutter */}
           <div className="w-14 shrink-0 border-r border-line">
             <div className="h-10 border-b border-line" />
-            <div className="relative" style={{ height: TOTAL_PX }}>
+            <div className="relative" style={{ height: totalPx }}>
               {hours.map((m) => (
                 <div
                   key={m}
                   className="absolute right-2 -translate-y-1/2 text-[11px] text-faint"
-                  style={{ top: (m - START_MIN) * PX_PER_MIN }}
+                  style={{ top: (m - startMin) * PX_PER_MIN }}
                 >
                   {minToTime(m)}
                 </div>
@@ -110,20 +127,20 @@ export function ReservationBoard({
                 </div>
                 <div
                   className="relative"
-                  style={{ height: TOTAL_PX }}
+                  style={{ height: totalPx }}
                   onClick={(e) => {
                     const rect = (
                       e.currentTarget as HTMLElement
                     ).getBoundingClientRect();
                     const y = e.clientY - rect.top;
-                    const raw = START_MIN + y / PX_PER_MIN;
+                    const raw = startMin + y / PX_PER_MIN;
                     const snapped = Math.round(raw / 15) * 15;
                     setModal({
                       mode: "create",
                       prefill: {
                         staffId: col.staffId ?? undefined,
                         startTime: minToTime(
-                          Math.min(Math.max(snapped, START_MIN), END_MIN - 15),
+                          Math.min(Math.max(snapped, startMin), endMin - 15),
                         ),
                       },
                     });
@@ -134,17 +151,23 @@ export function ReservationBoard({
                     <div
                       key={m}
                       className="absolute inset-x-0 border-t border-line/60"
-                      style={{ top: (m - START_MIN) * PX_PER_MIN }}
+                      style={{ top: (m - startMin) * PX_PER_MIN }}
                     />
                   ))}
 
                   {byColumn(col.staffId).map((r) => {
                     const s = jstMinutes(r.startAt);
                     const e = jstMinutes(r.endAt);
-                    const top = Math.max(0, (s - START_MIN) * PX_PER_MIN);
+                    const rawTop = (s - startMin) * PX_PER_MIN;
+                    const top = Math.min(
+                      Math.max(0, rawTop),
+                      Math.max(0, totalPx - 24),
+                    );
+                    const rawHeight =
+                      (Math.max(e, s + 15) - s) * PX_PER_MIN;
                     const height = Math.max(
-                      26,
-                      (Math.max(e, s + 15) - s) * PX_PER_MIN,
+                      24,
+                      Math.min(rawHeight, totalPx - top),
                     );
                     const meta = statusMeta(r.status);
                     const cancelled = [3, 4, 99].includes(r.status);
@@ -201,6 +224,11 @@ export function ReservationBoard({
 
       {modal && (
         <AppointmentModal
+          key={
+            modal.mode === "edit"
+              ? `e${modal.row.id}`
+              : `c${modal.prefill?.startTime ?? ""}-${modal.prefill?.staffId ?? ""}`
+          }
           open
           onClose={() => setModal(null)}
           date={date}

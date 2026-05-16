@@ -20,7 +20,14 @@ export async function loginAction(
   const result = await login(email, password);
   if (!result.ok) return { error: result.error };
 
-  redirect(next.startsWith("/") ? next : "/reservation");
+  // Same-origin app path only (reject protocol-relative // and /\ open redirects).
+  const safeNext =
+    next.startsWith("/") &&
+    !next.startsWith("//") &&
+    !next.startsWith("/\\")
+      ? next
+      : "/reservation";
+  redirect(safeNext);
 }
 
 export async function logoutAction(): Promise<void> {

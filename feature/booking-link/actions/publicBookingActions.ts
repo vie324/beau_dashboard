@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { jstDateTimeToDate, addMinutes } from "@/helper/utils/time";
 import { checkStaffAvailability } from "@/feature/reservation/actions/reservationActions";
@@ -95,21 +96,29 @@ export async function submitPublicBooking(
     }
   }
 
-  await db.appointment.create({
-    data: {
-      shopId: shop.id,
-      menuId: menu.id,
-      staffId: input.staffId ?? null,
-      bookingLinkId: link.id,
-      startAt,
-      endAt,
-      status: 0,
-      source: "public",
-      guestName: input.guestName,
-      guestPhone: input.guestPhone,
-      note: input.note ?? null,
-    },
-  });
+  try {
+    await db.appointment.create({
+      data: {
+        shopId: shop.id,
+        menuId: menu.id,
+        staffId: input.staffId ?? null,
+        bookingLinkId: link.id,
+        startAt,
+        endAt,
+        status: 0,
+        source: "public",
+        guestName: input.guestName,
+        guestPhone: input.guestPhone,
+        note: input.note ?? null,
+      },
+    });
+  } catch {
+    return {
+      ok: false,
+      error: "予約の送信に失敗しました。時間をおいて再度お試しください",
+    };
+  }
 
+  revalidatePath("/reservation");
   return { ok: true };
 }

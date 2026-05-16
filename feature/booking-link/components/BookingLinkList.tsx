@@ -21,8 +21,24 @@ export function BookingLinkList({
   menus: { id: number; name: string }[];
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
+
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+    startTransition(async () => {
+      setErr(null);
+      try {
+        const r = await fn();
+        if (!r.ok) {
+          setErr(r.error ?? "操作に失敗しました");
+          return;
+        }
+        router.refresh();
+      } catch {
+        setErr("操作に失敗しました。時間をおいて再度お試しください");
+      }
+    });
   const [modal, setModal] = useState<
     { mode: "create" } | { mode: "edit"; row: BookingLinkRow } | null
   >(null);
@@ -44,8 +60,14 @@ export function BookingLinkList({
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
-        <table className="w-full text-sm">
+      {err && (
+        <p className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {err}
+        </p>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-panel">
+        <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-faint">
               <th className="px-4 py-3 font-medium">リンク名</th>
@@ -111,11 +133,10 @@ export function BookingLinkList({
                 </td>
                 <td className="px-4 py-3">
                   <button
+                    disabled={pending}
+                    className="disabled:opacity-50"
                     onClick={() =>
-                      startTransition(async () => {
-                        await toggleBookingLink(l.id, !l.isActive);
-                        router.refresh();
-                      })
+                      run(() => toggleBookingLink(l.id, !l.isActive))
                     }
                   >
                     {l.isActive ? (
@@ -146,12 +167,10 @@ export function BookingLinkList({
                     <Button
                       size="sm"
                       variant="danger"
+                      disabled={pending}
                       onClick={() => {
                         if (!confirm(`「${l.name}」を削除しますか？`)) return;
-                        startTransition(async () => {
-                          await deleteBookingLink(l.id);
-                          router.refresh();
-                        });
+                        run(() => deleteBookingLink(l.id));
                       }}
                     >
                       削除

@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export default function BookingCompletePage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
@@ -20,12 +18,9 @@ export default function BookingCompletePage() {
             ご来店をお待ちしております。
           </p>
         </div>
-        <Link
-          href="/"
-          className="mt-6 inline-block text-xs text-faint hover:text-muted"
-        >
-          ← トップへ
-        </Link>
+        <p className="mt-6 text-xs text-faint">
+          このページは閉じていただいて構いません。
+        </p>
       </div>
     </main>
   );

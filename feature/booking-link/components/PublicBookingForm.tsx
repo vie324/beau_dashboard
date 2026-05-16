@@ -39,6 +39,22 @@ export function PublicBookingForm({
 
   function submit() {
     setError(null);
+    if (!form.shopId) {
+      setError("店舗を選択してください");
+      return;
+    }
+    if (!form.menuId) {
+      setError("メニューを選択してください");
+      return;
+    }
+    if (!form.guestName.trim()) {
+      setError("お名前を入力してください");
+      return;
+    }
+    if (form.guestPhone.trim().length < 8) {
+      setError("電話番号を正しく入力してください");
+      return;
+    }
     if (!form.date) {
       setError("ご希望日を選択してください");
       return;
@@ -136,6 +152,7 @@ export function PublicBookingForm({
         <div>
           <Label>お名前</Label>
           <Input
+            required
             value={form.guestName}
             onChange={(e) => set("guestName", e.target.value)}
             placeholder="山田 太郎"
@@ -144,6 +161,8 @@ export function PublicBookingForm({
         <div>
           <Label>電話番号</Label>
           <Input
+            required
+            type="tel"
             value={form.guestPhone}
             onChange={(e) => set("guestPhone", e.target.value)}
             placeholder="090-0000-0000"

@@ -46,7 +46,15 @@ export default async function PublicBookingPage({
             </p>
           )}
           <div className="mt-5">
-            <PublicBookingForm slug={slug} data={data} />
+            {data.menus.length === 0 || data.shops.length === 0 ? (
+              <p className="rounded-xl border border-line bg-base px-4 py-6 text-center text-sm text-muted">
+                現在オンラインで予約できるメニューがありません。
+                <br />
+                お手数ですが店舗まで直接お問い合わせください。
+              </p>
+            ) : (
+              <PublicBookingForm slug={slug} data={data} />
+            )}
           </div>
         </div>
 
