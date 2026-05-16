@@ -23,9 +23,17 @@ function plus(d: Date, min: number): Date {
 }
 
 async function main() {
+  // Idempotent: if the DB already has data (e.g. a redeploy on Vercel),
+  // skip seeding so real reservations created in the app are preserved.
+  const existing = await db.user.count();
+  if (existing > 0) {
+    console.log("Seed skipped — database already initialized.");
+    return;
+  }
+
   console.log("Seeding Beau …");
 
-  // Clean (dev only) — order matters for FKs
+  // Clean — order matters for FKs (no-op on a fresh DB)
   await db.appointment.deleteMany();
   await db.bookingLink.deleteMany();
   await db.menu.deleteMany();
