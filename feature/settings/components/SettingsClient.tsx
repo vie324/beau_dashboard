@@ -1,0 +1,630 @@
+"use client";
+
+import { useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Input, Label, Select } from "@/components/ui/Input";
+import {
+  saveShop,
+  deleteShop,
+  saveStaff,
+  deleteStaff,
+  saveMenu,
+  deleteMenu,
+  type ActionResult,
+} from "@/feature/settings/actions/settingsActions";
+import type {
+  ShopRow,
+  StaffRow,
+  MenuRow,
+} from "@/feature/settings/services/getSettingsData";
+
+type Tab = "shops" | "staff" | "menus";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "shops", label: "店舗" },
+  { key: "staff", label: "スタッフ" },
+  { key: "menus", label: "メニュー" },
+];
+
+export function SettingsClient({
+  shops,
+  staffs,
+  menus,
+  activeShopName,
+}: {
+  shops: ShopRow[];
+  staffs: StaffRow[];
+  menus: MenuRow[];
+  activeShopName: string;
+}) {
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>("shops");
+  const [pending, startTransition] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const [modal, setModal] = useState<ReactNode | null>(null);
+
+  const run = (fn: () => Promise<ActionResult>, onOk?: () => void) =>
+    startTransition(async () => {
+      setErr(null);
+      try {
+        const r = await fn();
+        if (!r.ok) {
+          setErr(r.error);
+          return;
+        }
+        onOk?.();
+        router.refresh();
+      } catch {
+        setErr("操作に失敗しました。時間をおいて再度お試しください");
+      }
+    });
+
+  const submitForm = (
+    action: (p: ActionResult | null, fd: FormData) => Promise<ActionResult>,
+    fd: FormData,
+  ) => run(() => action(null, fd), () => setModal(null));
+
+  return (
+    <div>
+      <div className="mb-6 inline-flex rounded-xl border border-line bg-surface p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => {
+              setTab(t.key);
+              setErr(null);
+            }}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+              tab === t.key
+                ? "bg-accent text-accent-fg"
+                : "text-muted hover:text-ink"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {err && (
+        <p className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {err}
+        </p>
+      )}
+
+      {tab === "shops" && (
+        <Section
+          title="店舗一覧"
+          onAdd={() =>
+            setModal(
+              <ShopForm
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveShop, fd)}
+                pending={pending}
+              />,
+            )
+          }
+        >
+          {shops.length === 0 && <Empty>店舗がありません</Empty>}
+          {shops.map((s) => (
+            <Row
+              key={s.id}
+              title={s.name}
+              meta={
+                <span className="text-faint">
+                  表示順 {s.sortNumber}
+                  {s.phone ? ` ・ ${s.phone}` : ""}
+                  {s.address ? ` ・ ${s.address}` : ""}
+                </span>
+              }
+              onEdit={() =>
+                setModal(
+                  <ShopForm
+                    initial={s}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveShop, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (confirm(`「${s.name}」を削除しますか？`))
+                  run(() => deleteShop(s.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
+      {tab === "staff" && (
+        <Section
+          title={`スタッフ一覧（${activeShopName}）`}
+          hint="表示中の店舗のスタッフです。店舗は右上のセレクタで切り替えられます。"
+          onAdd={() =>
+            setModal(
+              <StaffForm
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveStaff, fd)}
+                pending={pending}
+              />,
+            )
+          }
+        >
+          {staffs.length === 0 && <Empty>スタッフがいません</Empty>}
+          {staffs.map((s) => (
+            <Row
+              key={s.id}
+              title={
+                <span className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-3 rounded-full ring-1 ring-line"
+                    style={{ background: s.color }}
+                  />
+                  {s.name}
+                </span>
+              }
+              meta={
+                <span className="flex items-center gap-2 text-faint">
+                  割当順 {s.allocateOrder}
+                  {s.isBookable ? (
+                    <Badge className="border-ok/30 bg-ok/15 text-ok">
+                      予約可
+                    </Badge>
+                  ) : (
+                    <Badge className="border-line bg-base text-faint">
+                      予約不可
+                    </Badge>
+                  )}
+                </span>
+              }
+              onEdit={() =>
+                setModal(
+                  <StaffForm
+                    initial={s}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveStaff, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (confirm(`「${s.name}」を削除しますか？`))
+                  run(() => deleteStaff(s.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
+      {tab === "menus" && (
+        <Section
+          title="メニュー一覧"
+          onAdd={() =>
+            setModal(
+              <MenuForm
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveMenu, fd)}
+                pending={pending}
+              />,
+            )
+          }
+        >
+          {menus.length === 0 && <Empty>メニューがありません</Empty>}
+          {menus.map((m) => (
+            <Row
+              key={m.id}
+              title={m.name}
+              meta={
+                <span className="flex items-center gap-2 text-faint">
+                  {m.durationMin}分 ・ ¥{m.price.toLocaleString()}
+                  {m.shopId == null ? (
+                    <Badge className="border-info/30 bg-info/10 text-info">
+                      全店舗共通
+                    </Badge>
+                  ) : (
+                    <Badge className="border-line bg-base text-muted">
+                      この店舗のみ
+                    </Badge>
+                  )}
+                  {!m.isPublic && (
+                    <Badge className="border-line bg-base text-faint">
+                      非公開
+                    </Badge>
+                  )}
+                </span>
+              }
+              onEdit={() =>
+                setModal(
+                  <MenuForm
+                    initial={m}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveMenu, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (confirm(`「${m.name}」を削除しますか？`))
+                  run(() => deleteMenu(m.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
+      {modal}
+    </div>
+  );
+}
+
+/* ---------------- shared list UI ---------------- */
+
+function Section({
+  title,
+  hint,
+  onAdd,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  onAdd: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-surface shadow-panel">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide text-ink">
+            {title}
+          </h2>
+          {hint && <p className="mt-0.5 text-xs text-faint">{hint}</p>}
+        </div>
+        <Button size="sm" onClick={onAdd}>
+          ＋ 追加
+        </Button>
+      </div>
+      <ul className="divide-y divide-line/70">{children}</ul>
+    </div>
+  );
+}
+
+function Row({
+  title,
+  meta,
+  onEdit,
+  onDelete,
+  pending,
+}: {
+  title: ReactNode;
+  meta?: ReactNode;
+  onEdit: () => void;
+  onDelete: () => void;
+  pending: boolean;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-elevated/40">
+      <div className="min-w-0">
+        <div className="truncate font-medium text-ink">{title}</div>
+        {meta && <div className="mt-1 text-xs">{meta}</div>}
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onEdit}
+          disabled={pending}
+        >
+          編集
+        </Button>
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={onDelete}
+          disabled={pending}
+        >
+          削除
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return (
+    <li className="px-5 py-10 text-center text-sm text-faint">{children}</li>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+/* ---------------- forms ---------------- */
+
+function ShopForm({
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  initial?: ShopRow;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    sortNumber: initial?.sortNumber ?? 0,
+    address: initial?.address ?? "",
+    phone: initial?.phone ?? "",
+    lineUrl: initial?.lineUrl ?? "",
+  });
+  const submit = () => {
+    const fd = new FormData();
+    if (initial) fd.set("id", String(initial.id));
+    Object.entries(f).forEach(([k, v]) => fd.set(k, String(v)));
+    onSubmit(fd);
+  };
+  return (
+    <Modal open onClose={onClose} title={initial ? "店舗を編集" : "店舗を追加"}>
+      <div className="space-y-4">
+        <Field label="店舗名">
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="Beau 銀座本店"
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="表示順">
+            <Input
+              type="number"
+              min={0}
+              value={f.sortNumber}
+              onChange={(e) =>
+                setF({ ...f, sortNumber: Number(e.target.value) || 0 })
+              }
+            />
+          </Field>
+          <Field label="電話番号">
+            <Input
+              value={f.phone}
+              onChange={(e) => setF({ ...f, phone: e.target.value })}
+              placeholder="03-1234-5678"
+            />
+          </Field>
+        </div>
+        <Field label="住所">
+          <Input
+            value={f.address}
+            onChange={(e) => setF({ ...f, address: e.target.value })}
+          />
+        </Field>
+        <Field label="LINE URL">
+          <Input
+            value={f.lineUrl}
+            onChange={(e) => setF({ ...f, lineUrl: e.target.value })}
+          />
+        </Field>
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
+  );
+}
+
+function StaffForm({
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  initial?: StaffRow;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    color: initial?.color ?? "#6f9bd8",
+    allocateOrder: initial?.allocateOrder ?? 0,
+    isBookable: initial?.isBookable ?? true,
+  });
+  const submit = () => {
+    const fd = new FormData();
+    if (initial) fd.set("id", String(initial.id));
+    fd.set("name", f.name);
+    fd.set("color", f.color);
+    fd.set("allocateOrder", String(f.allocateOrder));
+    fd.set("isBookable", f.isBookable ? "true" : "false");
+    onSubmit(fd);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "スタッフを編集" : "スタッフを追加"}
+    >
+      <div className="space-y-4">
+        <Field label="スタッフ名">
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="佐藤 美咲"
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="表示色">
+            <input
+              type="color"
+              value={f.color}
+              onChange={(e) => setF({ ...f, color: e.target.value })}
+              className="h-10 w-full cursor-pointer rounded-xl border border-line bg-base"
+            />
+          </Field>
+          <Field label="割当順">
+            <Input
+              type="number"
+              min={0}
+              value={f.allocateOrder}
+              onChange={(e) =>
+                setF({ ...f, allocateOrder: Number(e.target.value) || 0 })
+              }
+            />
+          </Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={f.isBookable}
+            onChange={(e) => setF({ ...f, isBookable: e.target.checked })}
+            className="h-4 w-4 accent-accent"
+          />
+          予約受付の対象にする
+        </label>
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
+  );
+}
+
+function MenuForm({
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  initial?: MenuRow;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    durationMin: initial?.durationMin ?? 60,
+    price: initial?.price ?? 0,
+    isPublic: initial?.isPublic ?? true,
+    sortNumber: initial?.sortNumber ?? 0,
+    brandCommon: initial ? initial.shopId == null : true,
+  });
+  const submit = () => {
+    const fd = new FormData();
+    if (initial) fd.set("id", String(initial.id));
+    fd.set("name", f.name);
+    fd.set("durationMin", String(f.durationMin));
+    fd.set("price", String(f.price));
+    fd.set("isPublic", f.isPublic ? "true" : "false");
+    fd.set("sortNumber", String(f.sortNumber));
+    fd.set("brandCommon", f.brandCommon ? "true" : "false");
+    onSubmit(fd);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "メニューを編集" : "メニューを追加"}
+    >
+      <div className="space-y-4">
+        <Field label="メニュー名">
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="ボディケア 60分"
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="施術時間（分）">
+            <Input
+              type="number"
+              min={5}
+              step={5}
+              value={f.durationMin}
+              onChange={(e) =>
+                setF({ ...f, durationMin: Number(e.target.value) || 0 })
+              }
+            />
+          </Field>
+          <Field label="料金（円）">
+            <Input
+              type="number"
+              min={0}
+              value={f.price}
+              onChange={(e) =>
+                setF({ ...f, price: Number(e.target.value) || 0 })
+              }
+            />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="提供範囲">
+            <Select
+              value={f.brandCommon ? "1" : "0"}
+              onChange={(e) =>
+                setF({ ...f, brandCommon: e.target.value === "1" })
+              }
+            >
+              <option value="1">全店舗共通</option>
+              <option value="0">この店舗のみ</option>
+            </Select>
+          </Field>
+          <Field label="表示順">
+            <Input
+              type="number"
+              min={0}
+              value={f.sortNumber}
+              onChange={(e) =>
+                setF({ ...f, sortNumber: Number(e.target.value) || 0 })
+              }
+            />
+          </Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={f.isPublic}
+            onChange={(e) => setF({ ...f, isPublic: e.target.checked })}
+            className="h-4 w-4 accent-accent"
+          />
+          オンライン予約ページに公開する
+        </label>
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
+  );
+}
+
+function FormFooter({
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  onClose: () => void;
+  onSubmit: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="flex justify-end gap-2 pt-2">
+      <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
+        キャンセル
+      </Button>
+      <Button size="sm" onClick={onSubmit} disabled={pending}>
+        {pending ? "保存中…" : "保存"}
+      </Button>
+    </div>
+  );
+}

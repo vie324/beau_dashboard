@@ -14,7 +14,7 @@ import {
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 
 type FormData = {
-  staffs: { id: number; name: string }[];
+  staffs: { id: number; name: string; color?: string }[];
   menus: {
     id: number;
     name: string;

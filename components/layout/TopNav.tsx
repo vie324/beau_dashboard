@@ -7,6 +7,7 @@ import { cn } from "@/helper/utils/cn";
 const LINKS = [
   { href: "/reservation", label: "予約管理" },
   { href: "/booking-links", label: "強制リンク" },
+  { href: "/settings", label: "設定" },
 ];
 
 export function TopNav() {
