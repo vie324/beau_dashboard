@@ -3,6 +3,7 @@ import { getActiveShopId } from "@/helper/lib/shop-context";
 import { toLocalDateString } from "@/helper/utils/time";
 import { getReservations } from "@/feature/reservation/services/getReservations";
 import { getReservationFormData } from "@/feature/reservation/services/getReservationFormData";
+import { getShopHours } from "@/feature/reservation/services/getShopHours";
 import { ReservationBoard } from "@/feature/reservation/components/ReservationBoard";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,10 @@ export default async function ReservationPage({
     : today;
 
   const shopId = await getActiveShopId();
-  const [reservations, formData] = await Promise.all([
+  const [reservations, formData, shopHours] = await Promise.all([
     getReservations(shopId, date),
     getReservationFormData(shopId),
+    getShopHours(shopId),
   ]);
 
   return (
@@ -35,6 +37,7 @@ export default async function ReservationPage({
         today={today}
         reservations={reservations}
         formData={formData}
+        shopHours={shopHours}
       />
     </>
   );

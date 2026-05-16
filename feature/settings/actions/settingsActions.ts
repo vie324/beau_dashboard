@@ -8,6 +8,7 @@ import {
   shopSchema,
   staffSchema,
   menuSchema,
+  visitSourceSchema,
 } from "@/feature/settings/schema/settingsSchema";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -57,6 +58,10 @@ export async function saveShop(
           address: input.address || null,
           phone: input.phone || null,
           lineUrl: input.lineUrl || null,
+          openTime: input.openTime || null,
+          closeTime: input.closeTime || null,
+          breakStart: input.breakStart || null,
+          breakEnd: input.breakEnd || null,
         },
       });
     } else {
@@ -68,6 +73,10 @@ export async function saveShop(
           address: input.address || null,
           phone: input.phone || null,
           lineUrl: input.lineUrl || null,
+          openTime: input.openTime || null,
+          closeTime: input.closeTime || null,
+          breakStart: input.breakStart || null,
+          breakEnd: input.breakEnd || null,
         },
       });
     }
@@ -233,6 +242,91 @@ export async function deleteMenu(id: number): Promise<ActionResult> {
     await db.menu.update({ where: { id }, data: { deletedAt: new Date() } });
   } catch {
     return fail("削除に失敗しました");
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+/* ---------------- Visit sources (来店経路) ---------------- */
+
+export async function saveVisitSource(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  const parsed = visitSourceSchema.safeParse(
+    Object.fromEntries(formData.entries()),
+  );
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  const input = parsed.data;
+  const shopId = await getActiveShopId();
+
+  try {
+    if (input.id) {
+      const exists = await db.visitSource.findFirst({
+        where: { id: input.id, shopId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!exists) return fail("経路が見つかりません");
+      await db.visitSource.update({
+        where: { id: input.id },
+        data: { name: input.name, sortNumber: input.sortNumber },
+      });
+    } else {
+      await db.visitSource.create({
+        data: { shopId, name: input.name, sortNumber: input.sortNumber },
+      });
+    }
+  } catch {
+    return fail("保存に失敗しました。時間をおいて再度お試しください");
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+export async function deleteVisitSource(id: number): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  const shopId = await getActiveShopId();
+  const exists = await db.visitSource.findFirst({
+    where: { id, shopId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!exists) return fail("経路が見つかりません");
+  try {
+    await db.visitSource.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  } catch {
+    return fail("削除に失敗しました");
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+/** Idempotently create the standard set for the active shop. */
+export async function ensureDefaultVisitSources(): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  const shopId = await getActiveShopId();
+  const defaults = ["紹介", "meta", "チラシ", "HP"];
+  try {
+    const existing = await db.visitSource.findMany({
+      where: { shopId, deletedAt: null },
+      select: { name: true },
+    });
+    const have = new Set(existing.map((v) => v.name));
+    const missing = defaults.filter((n) => !have.has(n));
+    if (missing.length) {
+      await db.visitSource.createMany({
+        data: missing.map((name, i) => ({
+          shopId,
+          name,
+          sortNumber: existing.length + i + 1,
+        })),
+      });
+    }
+  } catch {
+    return fail("作成に失敗しました");
   }
   revalidateAll();
   return { ok: true };
