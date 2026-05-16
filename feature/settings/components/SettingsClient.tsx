@@ -13,31 +13,38 @@ import {
   deleteStaff,
   saveMenu,
   deleteMenu,
+  saveVisitSource,
+  deleteVisitSource,
+  ensureDefaultVisitSources,
   type ActionResult,
 } from "@/feature/settings/actions/settingsActions";
 import type {
   ShopRow,
   StaffRow,
   MenuRow,
+  VisitSourceRow,
 } from "@/feature/settings/services/getSettingsData";
 
-type Tab = "shops" | "staff" | "menus";
+type Tab = "shops" | "staff" | "menus" | "vsources";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "shops", label: "店舗" },
   { key: "staff", label: "スタッフ" },
   { key: "menus", label: "メニュー" },
+  { key: "vsources", label: "来店経路" },
 ];
 
 export function SettingsClient({
   shops,
   staffs,
   menus,
+  visitSources,
   activeShopName,
 }: {
   shops: ShopRow[];
   staffs: StaffRow[];
   menus: MenuRow[];
+  visitSources: VisitSourceRow[];
   activeShopName: string;
 }) {
   const router = useRouter();
@@ -257,6 +264,60 @@ export function SettingsClient({
         </Section>
       )}
 
+      {tab === "vsources" && (
+        <Section
+          title={`来店経路（${activeShopName}）`}
+          hint="新規顧客の予約時に選べる流入経路です。"
+          onAdd={() =>
+            setModal(
+              <VisitSourceForm
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveVisitSource, fd)}
+                pending={pending}
+              />,
+            )
+          }
+          extra={
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => run(() => ensureDefaultVisitSources())}
+            >
+              標準経路を追加（紹介/meta/チラシ/HP）
+            </Button>
+          }
+        >
+          {visitSources.length === 0 && (
+            <Empty>来店経路がありません</Empty>
+          )}
+          {visitSources.map((v) => (
+            <Row
+              key={v.id}
+              title={v.name}
+              meta={
+                <span className="text-faint">表示順 {v.sortNumber}</span>
+              }
+              onEdit={() =>
+                setModal(
+                  <VisitSourceForm
+                    initial={v}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveVisitSource, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (confirm(`「${v.name}」を削除しますか？`))
+                  run(() => deleteVisitSource(v.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
       {modal}
     </div>
   );
@@ -268,25 +329,30 @@ function Section({
   title,
   hint,
   onAdd,
+  extra,
   children,
 }: {
   title: string;
   hint?: string;
   onAdd: () => void;
+  extra?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-line bg-surface shadow-panel">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+      <div className="flex flex-col gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold tracking-wide text-ink">
             {title}
           </h2>
           {hint && <p className="mt-0.5 text-xs text-faint">{hint}</p>}
         </div>
-        <Button size="sm" onClick={onAdd}>
-          ＋ 追加
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {extra}
+          <Button size="sm" onClick={onAdd}>
+            ＋ 追加
+          </Button>
+        </div>
       </div>
       <ul className="divide-y divide-line/70">{children}</ul>
     </div>
@@ -374,6 +440,10 @@ function ShopForm({
     address: initial?.address ?? "",
     phone: initial?.phone ?? "",
     lineUrl: initial?.lineUrl ?? "",
+    openTime: initial?.openTime ?? "",
+    closeTime: initial?.closeTime ?? "",
+    breakStart: initial?.breakStart ?? "",
+    breakEnd: initial?.breakEnd ?? "",
   });
   const submit = () => {
     const fd = new FormData();
@@ -422,6 +492,43 @@ function ShopForm({
             onChange={(e) => setF({ ...f, lineUrl: e.target.value })}
           />
         </Field>
+
+        <div className="rounded-xl border border-line bg-base/40 p-3">
+          <p className="mb-2 text-xs font-medium text-muted">
+            営業時間・休憩（予約表の表示範囲に反映。空欄で 9:00–21:00）
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="営業開始">
+              <Input
+                type="time"
+                value={f.openTime}
+                onChange={(e) => setF({ ...f, openTime: e.target.value })}
+              />
+            </Field>
+            <Field label="営業終了">
+              <Input
+                type="time"
+                value={f.closeTime}
+                onChange={(e) => setF({ ...f, closeTime: e.target.value })}
+              />
+            </Field>
+            <Field label="休憩開始">
+              <Input
+                type="time"
+                value={f.breakStart}
+                onChange={(e) => setF({ ...f, breakStart: e.target.value })}
+              />
+            </Field>
+            <Field label="休憩終了">
+              <Input
+                type="time"
+                value={f.breakEnd}
+                onChange={(e) => setF({ ...f, breakEnd: e.target.value })}
+              />
+            </Field>
+          </div>
+        </div>
+
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
     </Modal>
@@ -602,6 +709,58 @@ function MenuForm({
           />
           オンライン予約ページに公開する
         </label>
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
+  );
+}
+
+function VisitSourceForm({
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  initial?: VisitSourceRow;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    sortNumber: initial?.sortNumber ?? 0,
+  });
+  const submit = () => {
+    const fd = new FormData();
+    if (initial) fd.set("id", String(initial.id));
+    fd.set("name", f.name);
+    fd.set("sortNumber", String(f.sortNumber));
+    onSubmit(fd);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "来店経路を編集" : "来店経路を追加"}
+    >
+      <div className="space-y-4">
+        <Field label="経路名">
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="紹介 / meta / チラシ / HP"
+          />
+        </Field>
+        <Field label="表示順">
+          <Input
+            type="number"
+            min={0}
+            value={f.sortNumber}
+            onChange={(e) =>
+              setF({ ...f, sortNumber: Number(e.target.value) || 0 })
+            }
+          />
+        </Field>
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
     </Modal>

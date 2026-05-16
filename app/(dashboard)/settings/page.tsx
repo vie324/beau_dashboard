@@ -24,6 +24,7 @@ export default async function SettingsPage() {
         shops={data.shops}
         staffs={data.staffs}
         menus={data.menus}
+        visitSources={data.visitSources}
         activeShopName={activeShopName}
       />
     </>

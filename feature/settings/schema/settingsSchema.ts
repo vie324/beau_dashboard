@@ -8,6 +8,13 @@ const bool = z.preprocess(
   z.boolean(),
 );
 
+const hhmm = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "時刻は HH:mm 形式で入力してください")
+  .optional()
+  .or(z.literal(""));
+
 export const shopSchema = z.object({
   id,
   name: z.string().trim().min(1, "店舗名を入力してください").max(80),
@@ -15,8 +22,19 @@ export const shopSchema = z.object({
   address: z.string().trim().max(200).optional().nullable(),
   phone: z.string().trim().max(40).optional().nullable(),
   lineUrl: z.string().trim().max(300).optional().nullable(),
+  openTime: hhmm,
+  closeTime: hhmm,
+  breakStart: hhmm,
+  breakEnd: hhmm,
 });
 export type ShopInput = z.infer<typeof shopSchema>;
+
+export const visitSourceSchema = z.object({
+  id,
+  name: z.string().trim().min(1, "経路名を入力してください").max(40),
+  sortNumber: z.coerce.number().int().min(0).max(9999).default(0),
+});
+export type VisitSourceInput = z.infer<typeof visitSourceSchema>;
 
 export const staffSchema = z.object({
   id,

@@ -52,6 +52,11 @@ model Shop {
   phone             String?
   lineUrl           String?
   defaultBookingSlug String?
+  // Business hours / break as "HH:mm" (null = use defaults)
+  openTime          String?
+  closeTime         String?
+  breakStart        String?
+  breakEnd          String?
   createdAt         DateTime  @default(now())
   deletedAt         DateTime?
   brand             Brand     @relation(fields: [brandId], references: [id])

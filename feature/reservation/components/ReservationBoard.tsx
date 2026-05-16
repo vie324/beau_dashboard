@@ -8,16 +8,24 @@ import { jstMinutesOfDay } from "@/helper/utils/time";
 import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
+import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 
 const BASE_START = 9 * 60; // 09:00 default window
 const BASE_END = 21 * 60; // 21:00
-const PX_PER_MIN = 1.7;
-const ROW_H = 76; // px per staff row
+const PX_PER_MIN = 2.0;
+const ROW_H = 88; // px per staff row
 const STAFF_W = 152; // px sticky staff-name column
 const HEAD_H = 40;
 
 function jstMinutes(d: Date): number {
   return jstMinutesOfDay(new Date(d));
+}
+
+function parseHm(t?: string | null): number | null {
+  if (!t) return null;
+  const [h, m] = t.split(":").map(Number);
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return null;
+  return h * 60 + m;
 }
 
 function minToTime(min: number): string {
@@ -33,11 +41,13 @@ export function ReservationBoard({
   today,
   reservations,
   formData,
+  shopHours,
 }: {
   date: string;
   today: string;
   reservations: ReservationRow[];
   formData: FormData;
+  shopHours?: ShopHours;
 }) {
   const [modal, setModal] = useState<
     | { mode: "create"; prefill?: { staffId?: number; startTime?: string } }
@@ -74,8 +84,12 @@ export function ReservationBoard({
   }, [formData.staffs, reservations]);
 
   const { startMin, endMin } = useMemo(() => {
-    let start = BASE_START;
-    let end = BASE_END;
+    let start = parseHm(shopHours?.openTime) ?? BASE_START;
+    let end = parseHm(shopHours?.closeTime) ?? BASE_END;
+    if (end <= start) {
+      start = BASE_START;
+      end = BASE_END;
+    }
     for (const r of reservations) {
       const s = jstMinutes(r.startAt);
       const e = jstMinutes(r.endAt);
@@ -83,7 +97,14 @@ export function ReservationBoard({
       if (e > end) end = Math.ceil(e / 60) * 60;
     }
     return { startMin: Math.max(0, start), endMin: Math.min(24 * 60, end) };
-  }, [reservations]);
+  }, [reservations, shopHours]);
+
+  const breakBand = useMemo(() => {
+    const bs = parseHm(shopHours?.breakStart);
+    const be = parseHm(shopHours?.breakEnd);
+    if (bs == null || be == null || be <= bs) return null;
+    return { bs, be };
+  }, [shopHours]);
 
   const totalW = (endMin - startMin) * PX_PER_MIN;
 
@@ -152,6 +173,29 @@ export function ReservationBoard({
 
           {/* Body */}
           <div className="relative">
+            {/* break band */}
+            {breakBand &&
+              breakBand.be > startMin &&
+              breakBand.bs < endMin && (
+                <div
+                  className="pointer-events-none absolute top-0 z-0 flex items-start justify-center bg-line/40"
+                  style={{
+                    left:
+                      STAFF_W +
+                      Math.max(0, breakBand.bs - startMin) * PX_PER_MIN,
+                    width:
+                      (Math.min(breakBand.be, endMin) -
+                        Math.max(breakBand.bs, startMin)) *
+                      PX_PER_MIN,
+                    height: rows.length * ROW_H,
+                  }}
+                >
+                  <span className="mt-1 rounded bg-line px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                    休憩
+                  </span>
+                </div>
+              )}
+
             {/* current-time cursor */}
             {showNow && (
               <div
@@ -224,10 +268,10 @@ export function ReservationBoard({
                     const rawLeft = (s - startMin) * PX_PER_MIN;
                     const left = Math.min(
                       Math.max(0, rawLeft),
-                      Math.max(0, totalW - 56),
+                      Math.max(0, totalW - 72),
                     );
                     const width = Math.max(
-                      56,
+                      72,
                       Math.min(
                         (Math.max(e, s + 15) - s) * PX_PER_MIN,
                         totalW - left,
@@ -259,11 +303,13 @@ export function ReservationBoard({
                             r.visitSource?.labelTextColor ?? "#d8b06a",
                         }}
                       >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold tabular-nums text-ink">
+                        <div className="flex min-w-0 items-center justify-between gap-1">
+                          <span className="truncate font-semibold tabular-nums text-ink">
                             {minToTime(s)}
                           </span>
-                          <Badge className={meta.className}>
+                          <Badge
+                            className={`${meta.className} shrink-0 whitespace-nowrap`}
+                          >
                             {meta.label}
                           </Badge>
                         </div>

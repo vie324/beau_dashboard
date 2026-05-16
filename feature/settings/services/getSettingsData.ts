@@ -2,7 +2,7 @@ import { db } from "@/helper/lib/db";
 
 /** Master data for the settings screen, scoped to the active brand/shop. */
 export async function getSettingsData(brandId: number, shopId: number) {
-  const [shops, staffs, menus] = await Promise.all([
+  const [shops, staffs, menus, visitSources] = await Promise.all([
     db.shop.findMany({
       where: { brandId, deletedAt: null },
       orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
@@ -13,6 +13,10 @@ export async function getSettingsData(brandId: number, shopId: number) {
         address: true,
         phone: true,
         lineUrl: true,
+        openTime: true,
+        closeTime: true,
+        breakStart: true,
+        breakEnd: true,
       },
     }),
     db.staff.findMany({
@@ -39,12 +43,18 @@ export async function getSettingsData(brandId: number, shopId: number) {
         shopId: true,
       },
     }),
+    db.visitSource.findMany({
+      where: { shopId, deletedAt: null },
+      orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, sortNumber: true },
+    }),
   ]);
 
-  return { shops, staffs, menus };
+  return { shops, staffs, menus, visitSources };
 }
 
 export type SettingsData = Awaited<ReturnType<typeof getSettingsData>>;
 export type ShopRow = SettingsData["shops"][number];
 export type StaffRow = SettingsData["staffs"][number];
 export type MenuRow = SettingsData["menus"][number];
+export type VisitSourceRow = SettingsData["visitSources"][number];

@@ -92,6 +92,10 @@ export function AppointmentModal({
     note: initial?.note ?? "",
   });
 
+  const [custMode, setCustMode] = useState<"existing" | "new">(
+    initial?.customerId ? "existing" : initial?.guestName ? "new" : "existing",
+  );
+
   const set = <K extends keyof typeof form>(
     key: K,
     value: (typeof form)[K],
@@ -238,57 +242,93 @@ export function AppointmentModal({
         </div>
 
         <div>
-          <Label>顧客</Label>
-          <Select
-            value={form.customerId}
-            onChange={(e) => set("customerId", e.target.value)}
-          >
-            <option value="">（新規 / 来店者名を入力）</option>
-            {formData.customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.phone ? `（${c.phone}）` : ""}
-              </option>
-            ))}
-          </Select>
+          <Label>顧客区分</Label>
+          <div className="inline-flex rounded-xl border border-line bg-base p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setCustMode("existing");
+                setForm((f) => ({ ...f, guestName: "", guestPhone: "" }));
+              }}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                custMode === "existing"
+                  ? "bg-accent text-accent-fg"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              既存顧客
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCustMode("new");
+                setForm((f) => ({ ...f, customerId: "" }));
+              }}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                custMode === "new"
+                  ? "bg-accent text-accent-fg"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              新規顧客
+            </button>
+          </div>
         </div>
 
-        {!form.customerId && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>来店者名</Label>
-              <Input
-                value={form.guestName}
-                onChange={(e) => set("guestName", e.target.value)}
-                placeholder="山田 太郎"
-              />
-            </div>
-            <div>
-              <Label>電話番号</Label>
-              <Input
-                value={form.guestPhone}
-                onChange={(e) => set("guestPhone", e.target.value)}
-                placeholder="090-0000-0000"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
+        {custMode === "existing" ? (
           <div>
-            <Label>来店経路</Label>
+            <Label>顧客</Label>
             <Select
-              value={form.visitSourceId}
-              onChange={(e) => set("visitSourceId", e.target.value)}
+              value={form.customerId}
+              onChange={(e) => set("customerId", e.target.value)}
             >
-              <option value="">（未選択）</option>
-              {formData.visitSources.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
+              <option value="">（顧客を選択）</option>
+              {formData.customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.phone ? `（${c.phone}）` : ""}
                 </option>
               ))}
             </Select>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>来店者名</Label>
+                <Input
+                  value={form.guestName}
+                  onChange={(e) => set("guestName", e.target.value)}
+                  placeholder="山田 太郎"
+                />
+              </div>
+              <div>
+                <Label>電話番号</Label>
+                <Input
+                  value={form.guestPhone}
+                  onChange={(e) => set("guestPhone", e.target.value)}
+                  placeholder="090-0000-0000"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>来店経路</Label>
+              <Select
+                value={form.visitSourceId}
+                onChange={(e) => set("visitSourceId", e.target.value)}
+              >
+                <option value="">（未選択）</option>
+                {formData.visitSources.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>売上（円）</Label>
             <Input

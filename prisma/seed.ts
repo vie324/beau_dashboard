@@ -101,14 +101,14 @@ async function main() {
     ),
   );
 
-  // Visit sources (per shop)
+  // Visit sources (per shop) — default set
   for (const shopId of [ginza.id, omotesando.id]) {
     await db.visitSource.createMany({
       data: [
-        { shopId, name: "Web予約", color: "#3a3119", labelTextColor: "#d8b06a", sortNumber: 1 },
-        { shopId, name: "電話", color: "#1d2a3a", labelTextColor: "#6f9bd8", sortNumber: 2 },
-        { shopId, name: "紹介", color: "#1d3328", labelTextColor: "#5fb98a", sortNumber: 3 },
-        { shopId, name: "Instagram", color: "#33203a", labelTextColor: "#b08bd8", sortNumber: 4 },
+        { shopId, name: "紹介", color: "#1d3328", labelTextColor: "#5fb98a", sortNumber: 1 },
+        { shopId, name: "meta", color: "#1d2a3a", labelTextColor: "#6f9bd8", sortNumber: 2 },
+        { shopId, name: "チラシ", color: "#3a3119", labelTextColor: "#d8b06a", sortNumber: 3 },
+        { shopId, name: "HP", color: "#33203a", labelTextColor: "#b08bd8", sortNumber: 4 },
       ],
     });
   }
