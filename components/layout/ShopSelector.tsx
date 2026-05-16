@@ -26,6 +26,7 @@ export function ShopSelector({
 
   return (
     <select
+      aria-label="店舗を切り替え"
       value={activeShopId}
       disabled={pending}
       onChange={(e) => {

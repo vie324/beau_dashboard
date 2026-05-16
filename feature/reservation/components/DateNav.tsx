@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatJpDate, shiftDateString } from "@/helper/utils/time";
 import { Button } from "@/components/ui/Button";
@@ -12,22 +13,38 @@ export function DateNav({
   today: string;
 }) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
 
-  const go = (d: string) => router.push(`/reservation?date=${d}`);
+  const go = (d: string) =>
+    startTransition(() => router.push(`/reservation?date=${d}`));
 
   return (
-    <div className="flex items-center gap-2">
-      <Button size="sm" variant="outline" onClick={() => go(shiftDateString(date, -1))}>
+    <div
+      className="flex items-center gap-2"
+      aria-busy={pending}
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={() => go(shiftDateString(date, -1))}
+      >
         ‹ 前日
       </Button>
       <Button
         size="sm"
         variant={date === today ? "primary" : "ghost"}
+        disabled={pending}
         onClick={() => go(today)}
       >
         今日
       </Button>
-      <Button size="sm" variant="outline" onClick={() => go(shiftDateString(date, 1))}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={() => go(shiftDateString(date, 1))}
+      >
         翌日 ›
       </Button>
       <div className="ml-2 flex items-center gap-2">
@@ -37,9 +54,13 @@ export function DateNav({
         <input
           type="date"
           value={date}
+          disabled={pending}
           onChange={(e) => e.target.value && go(e.target.value)}
-          className="h-8 rounded-xl border border-line bg-base px-2 text-xs text-muted focus:border-accent/60 focus:outline-none"
+          className="h-8 rounded-xl border border-line bg-base px-2 text-xs text-muted focus:border-accent/60 focus:outline-none disabled:opacity-50"
         />
+        {pending && (
+          <span className="text-xs text-faint">読み込み中…</span>
+        )}
       </div>
     </div>
   );

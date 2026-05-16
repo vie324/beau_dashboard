@@ -33,11 +33,9 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:p-8">
-      <div
-        className="absolute inset-0"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      {/* Backdrop is non-interactive: prevents accidental data loss from a
+          stray click. Close via the ✕ button, Cancel, or Escape. */}
+      <div className="absolute inset-0" aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"

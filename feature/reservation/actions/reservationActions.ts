@@ -91,15 +91,19 @@ async function upsert(
     note: input.note ?? null,
   };
 
-  if (input.id) {
-    const existing = await db.appointment.findFirst({
-      where: { id: input.id, shopId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!existing) return { ok: false, error: "予約が見つかりません" };
-    await db.appointment.update({ where: { id: input.id }, data });
-  } else {
-    await db.appointment.create({ data: { ...data, source: "manual" } });
+  try {
+    if (input.id) {
+      const existing = await db.appointment.findFirst({
+        where: { id: input.id, shopId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!existing) return { ok: false, error: "予約が見つかりません" };
+      await db.appointment.update({ where: { id: input.id }, data });
+    } else {
+      await db.appointment.create({ data: { ...data, source: "manual" } });
+    }
+  } catch {
+    return { ok: false, error: "保存に失敗しました。時間をおいて再度お試しください" };
   }
 
   revalidatePath("/reservation");
@@ -136,7 +140,11 @@ export async function setAppointmentStatus(
   });
   if (!existing) return { ok: false, error: "予約が見つかりません" };
 
-  await db.appointment.update({ where: { id }, data: { status } });
+  try {
+    await db.appointment.update({ where: { id }, data: { status } });
+  } catch {
+    return { ok: false, error: "ステータスの変更に失敗しました" };
+  }
   revalidatePath("/reservation");
   return { ok: true };
 }
@@ -151,10 +159,14 @@ export async function deleteAppointment(id: number): Promise<ActionResult> {
   });
   if (!existing) return { ok: false, error: "予約が見つかりません" };
 
-  await db.appointment.update({
-    where: { id },
-    data: { deletedAt: new Date() },
-  });
+  try {
+    await db.appointment.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  } catch {
+    return { ok: false, error: "削除に失敗しました" };
+  }
   revalidatePath("/reservation");
   return { ok: true };
 }
