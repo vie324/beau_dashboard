@@ -5,9 +5,10 @@
 next-env.d.ts
 *.tsbuildinfo
 
-# local env
-.env
+# local env (.env holds only local SQLite + a dev secret and IS committed so a
+# fresh clone runs without manual setup; put real overrides in .env.local)
 .env.local
+.env.*.local
 
 # prisma sqlite
 /prisma/dev.db

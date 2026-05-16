@@ -1,0 +1,13 @@
+{
+  "name": "beau_dashboard",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Beau dashboard",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm install && npm run db:reset",
+  "postStartCommand": "nohup npm run dev -- -H 0.0.0.0 -p 3000 > /tmp/beau-dev.log 2>&1 &"
+}
