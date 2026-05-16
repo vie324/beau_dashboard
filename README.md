@@ -1,20 +1,25 @@
 # Beau — サロン予約管理ダッシュボード
 
 整骨院・整体・エステなどのサロン向け予約管理システム。
-**Next.js (App Router) + TypeScript + Prisma/SQLite** で構築（外部サービス不要、clone してすぐ動きます）。
+**Next.js (App Router) + TypeScript + Prisma/PostgreSQL** で構築。Vercel にそのままデプロイできます。
 
-## クイックスタート
+## デプロイ（Vercel）
+
+1. ホスト型 PostgreSQL を用意（[Neon](https://neon.tech) 無料枠など）し、**接続文字列**を取得
+2. Vercel でこのリポジトリを Import
+3. Project → Settings → Environment Variables に `DATABASE_URL`（上の接続文字列）を追加
+4. Deploy。`build` 時に `prisma db push` でテーブル作成、初回のみシード投入されます
+
+ログイン: `admin@beau.test` / `beau1234`
+
+## ローカル開発
 
 ```bash
 npm install
-npm run dev      # http://localhost:3000
+echo 'DATABASE_URL="postgresql://..."' > .env.local   # ホスト型PostgreSQLの接続文字列
+npm run db:reset   # テーブル作成 + シード
+npm run dev        # http://localhost:3000
 ```
-
-`.env` はリポジトリに含まれており、初回 `npm run dev`（または `build` / `start`）時に
-SQLite データベースの作成とシード投入が自動実行されます（既存DBがあれば何もしません）。
-手動で行う場合は `npm run db:reset` も使えます。
-
-ログイン: `admin@beau.test` / `beau1234`
 
 > 画面が真っ白なときは、(1) `npm install` が正常終了しているか、(2) ターミナルに
 > `✓ Ready` / `✓ Compiled` が出てから開いているか（初回コンパイルは数秒かかります）、
@@ -47,4 +52,4 @@ helper/utils/       time(Asia/Tokyo), status, cn
 prisma/             schema.prisma, seed.ts
 ```
 
-技術スタック・開発ルールの詳細は元プロジェクト概要に準拠（Supabase の代わりに Prisma/SQLite を採用）。
+技術スタック・開発ルールの詳細は元プロジェクト概要に準拠（Supabase の代わりに Prisma/PostgreSQL を採用）。

@@ -1,13 +1,13 @@
 // Beau — salon reservation dashboard
-// Local SQLite via Prisma. JSON-like fields are stored as TEXT (SQLite has no JSON type).
-// All tables use soft delete via `deletedAt`.
+// PostgreSQL via Prisma (hosted DB, works on Vercel/serverless).
+// JSON-like fields are stored as TEXT (String). All tables soft delete via `deletedAt`.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
