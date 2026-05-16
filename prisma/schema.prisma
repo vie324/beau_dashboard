@@ -1,0 +1,183 @@
+// Beau — salon reservation dashboard
+// Local SQLite via Prisma. JSON-like fields are stored as TEXT (SQLite has no JSON type).
+// All tables use soft delete via `deletedAt`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Brand-common tables (no shopId) ----
+
+model Brand {
+  id           Int           @id @default(autoincrement())
+  name         String
+  slug         String        @unique
+  createdAt    DateTime      @default(now())
+  deletedAt    DateTime?
+  shops        Shop[]
+  users        User[]
+  bookingLinks BookingLink[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  brandId      Int?
+  shopId       Int?
+  email        String    @unique
+  passwordHash String
+  name         String
+  // role: root | brand | shop | staff
+  role         String    @default("shop")
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  brand        Brand?    @relation(fields: [brandId], references: [id])
+}
+
+// ---- Shop-scoped tables ----
+
+model Shop {
+  id                Int       @id @default(autoincrement())
+  brandId           Int
+  name              String
+  uuid              String    @unique @default(cuid())
+  sortNumber        Int       @default(0)
+  address           String?
+  phone             String?
+  lineUrl           String?
+  defaultBookingSlug String?
+  createdAt         DateTime  @default(now())
+  deletedAt         DateTime?
+  brand             Brand     @relation(fields: [brandId], references: [id])
+  staffs            Staff[]
+  customers         Customer[]
+  appointments      Appointment[]
+  visitSources      VisitSource[]
+}
+
+model Staff {
+  id            Int           @id @default(autoincrement())
+  shopId        Int
+  name          String
+  color         String        @default("#6f9bd8")
+  allocateOrder Int           @default(0)
+  isBookable    Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  deletedAt     DateTime?
+  shop          Shop          @relation(fields: [shopId], references: [id])
+  appointments  Appointment[]
+}
+
+model Customer {
+  id           Int           @id @default(autoincrement())
+  shopId       Int
+  name         String
+  kana         String?
+  phone        String?
+  email        String?
+  note         String?
+  createdAt    DateTime      @default(now())
+  deletedAt    DateTime?
+  shop         Shop          @relation(fields: [shopId], references: [id])
+  appointments Appointment[]
+}
+
+// ---- Hybrid tables (shopId nullable -> NULL means brand-common) ----
+
+model MenuCategory {
+  id         Int       @id @default(autoincrement())
+  shopId     Int?
+  name       String
+  sortNumber Int       @default(0)
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  menus      Menu[]
+}
+
+model Menu {
+  id           Int           @id @default(autoincrement())
+  shopId       Int?
+  categoryId   Int?
+  // VARCHAR prefix: BRD-xxx (brand-common) / STR-xxx (shop-only)
+  menuManageId String        @unique
+  name         String
+  durationMin  Int           @default(60)
+  price        Int           @default(0)
+  isPublic     Boolean       @default(true)
+  sortNumber   Int           @default(0)
+  createdAt    DateTime      @default(now())
+  deletedAt    DateTime?
+  category     MenuCategory? @relation(fields: [categoryId], references: [id])
+  appointments Appointment[]
+}
+
+model VisitSource {
+  id             Int           @id @default(autoincrement())
+  shopId         Int
+  name           String
+  color          String        @default("#3a3119")
+  labelTextColor String        @default("#d8b06a")
+  sortNumber     Int           @default(0)
+  createdAt      DateTime      @default(now())
+  deletedAt      DateTime?
+  shop           Shop          @relation(fields: [shopId], references: [id])
+  appointments   Appointment[]
+}
+
+model Appointment {
+  id            Int          @id @default(autoincrement())
+  shopId        Int
+  customerId    Int?
+  staffId       Int?
+  menuId        Int?
+  visitSourceId Int?
+  bookingLinkId Int?
+  startAt       DateTime
+  endAt         DateTime
+  // 0 waiting / 1 in-service / 2 done / 3 cancel / 4 same-day cancel / 99 no-show
+  status        Int          @default(0)
+  sales         Int?
+  note          String?
+  isMemberJoin  Boolean      @default(false)
+  // manual | public
+  source        String       @default("manual")
+  guestName     String?
+  guestPhone    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  shop          Shop         @relation(fields: [shopId], references: [id])
+  customer      Customer?    @relation(fields: [customerId], references: [id])
+  staff         Staff?       @relation(fields: [staffId], references: [id])
+  menu          Menu?        @relation(fields: [menuId], references: [id])
+  visitSource   VisitSource? @relation(fields: [visitSourceId], references: [id])
+  bookingLink   BookingLink? @relation(fields: [bookingLinkId], references: [id])
+
+  @@index([shopId, startAt])
+  @@index([staffId, startAt])
+}
+
+// ---- Booking links (強制リンク) — brand-common, shopId NULL allowed ----
+
+model BookingLink {
+  id                    Int           @id @default(autoincrement())
+  brandId               Int
+  shopId                Int?
+  slug                  String        @unique
+  name                  String
+  description           String?
+  isActive              Boolean       @default(true)
+  requireStaffSelection Boolean       @default(false)
+  // JSON (TEXT): array of allowed menu ids, e.g. "[1,2,3]"
+  allowedMenuIds        String?
+  // JSON (TEXT): reminder settings, e.g. {"enabled":true,"hoursBefore":24}
+  reminderSettings      String?
+  createdAt             DateTime      @default(now())
+  deletedAt             DateTime?
+  brand                 Brand         @relation(fields: [brandId], references: [id])
+  appointments          Appointment[]
+}
