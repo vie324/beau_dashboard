@@ -7,12 +7,18 @@
 
 ```bash
 npm install
-cp .env.example .env          # 既に .env があれば不要
-npm run db:reset              # SQLite 作成 + シード投入
-npm run dev                   # http://localhost:3000
+npm run dev      # http://localhost:3000
 ```
 
+`.env` はリポジトリに含まれており、初回 `npm run dev`（または `build` / `start`）時に
+SQLite データベースの作成とシード投入が自動実行されます（既存DBがあれば何もしません）。
+手動で行う場合は `npm run db:reset` も使えます。
+
 ログイン: `admin@beau.test` / `beau1234`
+
+> 画面が真っ白なときは、(1) `npm install` が正常終了しているか、(2) ターミナルに
+> `✓ Ready` / `✓ Compiled` が出てから開いているか（初回コンパイルは数秒かかります）、
+> (3) ブラウザを再読み込み（キャッシュ無効）したか、を確認してください。
 
 ## 実装済み機能
 
