@@ -82,7 +82,7 @@ export function BookingLinkList({
             {links.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-faint">
-                  強制リンクがありません。「新規リンク」から作成してください。
+                  予約リンクがありません。「新規リンク」から作成してください。
                 </td>
               </tr>
             )}

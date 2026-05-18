@@ -97,7 +97,7 @@ export function BookingLinkForm({
     <Modal
       open={open}
       onClose={onClose}
-      title={initial ? "強制リンクの編集" : "新規 強制リンク"}
+      title={initial ? "予約リンクの編集" : "新規 予約リンク"}
       className="max-w-xl"
     >
       <div className="space-y-4">

@@ -31,7 +31,7 @@ export default async function BookingLinksPage() {
   return (
     <>
       <PageHeader
-        title="強制リンク"
+        title="予約リンク"
         description="公開予約ページ（/book/&lt;slug&gt;）を発行します。slug ごとに対象店舗・予約可能メニュー・リマインドを制御できます。"
       />
       <BookingLinkList links={links} shops={shops} menus={menus} />
