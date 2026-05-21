@@ -13,6 +13,8 @@ import {
 import {
   parseHoursByDow,
   serializeHoursByDow,
+  parseDateOverrides,
+  serializeDateOverrides,
 } from "@/helper/utils/shopHours";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -21,6 +23,11 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 function cleanHoursByDow(raw: string | null | undefined): string | null {
   if (!raw) return null;
   return serializeHoursByDow(parseHoursByDow(raw));
+}
+
+function cleanDateOverrides(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return serializeDateOverrides(parseDateOverrides(raw));
 }
 
 function fail(msg: string): ActionResult {
@@ -73,6 +80,7 @@ export async function saveShop(
           breakStart: input.breakStart || null,
           breakEnd: input.breakEnd || null,
           hoursByDow: cleanHoursByDow(input.hoursByDow),
+          dateOverrides: cleanDateOverrides(input.dateOverrides),
         },
       });
     } else {
@@ -89,6 +97,7 @@ export async function saveShop(
           breakStart: input.breakStart || null,
           breakEnd: input.breakEnd || null,
           hoursByDow: cleanHoursByDow(input.hoursByDow),
+          dateOverrides: cleanDateOverrides(input.dateOverrides),
         },
       });
     }

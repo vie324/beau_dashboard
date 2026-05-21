@@ -1,17 +1,60 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Label, Select } from "@/components/ui/Input";
+import { toLocalDateString, formatJpDate } from "@/helper/utils/time";
 import {
   parseHoursByDow,
   serializeHoursByDow,
+  parseDateOverrides,
+  serializeDateOverrides,
   type DowOverride,
   type HoursByDow,
+  type DateOverride,
+  type DateOverrides,
+  type DateOverrideType,
 } from "@/helper/utils/shopHours";
+
+const DATE_OV_LABEL: Record<DateOverrideType, string> = {
+  closed: "全日休",
+  morning: "午前休",
+  afternoon: "午後休",
+};
+const DATE_OV_BADGE: Record<DateOverrideType, string> = {
+  closed: "border-danger/40 bg-danger/15 text-danger",
+  morning: "border-info/40 bg-info/15 text-info",
+  afternoon: "border-warn/40 bg-warn/15 text-warn",
+};
+
+function shiftMonth(monthStr: string, delta: number): string {
+  const [y, m] = monthStr.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildMonthCells(monthStr: string): (string | null)[][] {
+  const [y, m] = monthStr.split("-").map(Number);
+  const startDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const flat: (string | null)[] = [];
+  for (let i = 0; i < 42; i++) {
+    const dayNum = i - startDow + 1;
+    if (dayNum < 1 || dayNum > daysInMonth) {
+      flat.push(null);
+    } else {
+      flat.push(
+        `${y}-${String(m).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`,
+      );
+    }
+  }
+  const rows: (string | null)[][] = [];
+  for (let i = 0; i < 6; i++) rows.push(flat.slice(i * 7, (i + 1) * 7));
+  return rows;
+}
 
 const DOW_LABELS: { key: string; label: string }[] = [
   { key: "1", label: "月" },
@@ -464,6 +507,18 @@ function ShopForm({
   });
   const [useDow, setUseDow] = useState(Object.keys(initialDow).length > 0);
   const [dow, setDow] = useState<HoursByDow>(initialDow);
+  const initialDateOv = parseDateOverrides(initial?.dateOverrides);
+  const [useDateOv, setUseDateOv] = useState(
+    Object.keys(initialDateOv).length > 0,
+  );
+  const [dateOv, setDateOv] = useState<DateOverrides>(initialDateOv);
+  const setDateOverride = (date: string, override: DateOverride | null) =>
+    setDateOv((prev) => {
+      const next = { ...prev };
+      if (override === null) delete next[date];
+      else next[date] = override;
+      return next;
+    });
   const setDowField = (
     key: string,
     field: keyof DowOverride,
@@ -498,6 +553,10 @@ function ShopForm({
     if (initial) fd.set("id", String(initial.id));
     Object.entries(f).forEach(([k, v]) => fd.set(k, String(v)));
     fd.set("hoursByDow", useDow ? (serializeHoursByDow(dow) ?? "") : "");
+    fd.set(
+      "dateOverrides",
+      useDateOv ? (serializeDateOverrides(dateOv) ?? "") : "",
+    );
     onSubmit(fd);
   };
   return (
@@ -678,9 +737,192 @@ function ShopForm({
           )}
         </div>
 
+        <div className="rounded-xl border border-line bg-base/40 p-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={useDateOv}
+              onChange={(e) => setUseDateOv(e.target.checked)}
+              className="accent-accent"
+            />
+            休診日カレンダー（祝日・臨時休診）
+          </label>
+          {useDateOv && (
+            <div className="mt-3">
+              <DateOverridesCalendar
+                overrides={dateOv}
+                onSet={setDateOverride}
+              />
+            </div>
+          )}
+        </div>
+
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
     </Modal>
+  );
+}
+
+function DateOverridesCalendar({
+  overrides,
+  onSet,
+}: {
+  overrides: DateOverrides;
+  onSet: (date: string, override: DateOverride | null) => void;
+}) {
+  const todayYmd = useMemo(() => toLocalDateString(), []);
+  const [calMonth, setCalMonth] = useState(todayYmd.slice(0, 7));
+  const [selected, setSelected] = useState<string | null>(null);
+  const rows = useMemo(() => buildMonthCells(calMonth), [calMonth]);
+  const [y, m] = calMonth.split("-").map(Number);
+  const monthLabel = `${y}年${m}月`;
+  const selectedOv = selected ? overrides[selected] : undefined;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setCalMonth(shiftMonth(calMonth, -1))}
+          className="rounded-lg border border-line px-3 py-1 text-xs text-muted hover:border-accent/60 hover:text-accent"
+        >
+          ‹ 前月
+        </button>
+        <span className="text-sm font-medium text-ink">{monthLabel}</span>
+        <button
+          type="button"
+          onClick={() => setCalMonth(shiftMonth(calMonth, 1))}
+          className="rounded-lg border border-line px-3 py-1 text-xs text-muted hover:border-accent/60 hover:text-accent"
+        >
+          次月 ›
+        </button>
+      </div>
+
+      <table className="w-full border-collapse text-center text-xs">
+        <thead>
+          <tr className="text-faint">
+            {["日", "月", "火", "水", "木", "金", "土"].map((d, i) => (
+              <th
+                key={d}
+                className={`py-1 font-medium ${
+                  i === 0 ? "text-danger" : i === 6 ? "text-info" : ""
+                }`}
+              >
+                {d}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri}>
+              {row.map((cell, ci) => {
+                if (!cell)
+                  return <td key={ci} className="border border-line/40 p-0" />;
+                const ov = overrides[cell];
+                const isSelected = selected === cell;
+                const isToday = cell === todayYmd;
+                const dayNum = Number(cell.slice(8, 10));
+                return (
+                  <td
+                    key={ci}
+                    className="border border-line/40 p-0 align-top"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelected(cell)}
+                      className={`flex h-12 w-full flex-col items-center justify-start gap-0.5 px-1 py-1 transition-colors ${
+                        isSelected
+                          ? "ring-2 ring-accent ring-inset"
+                          : "hover:bg-elevated/50"
+                      } ${isToday ? "bg-accent-soft/40" : ""}`}
+                    >
+                      <span
+                        className={`text-[11px] ${
+                          ci === 0
+                            ? "text-danger"
+                            : ci === 6
+                              ? "text-info"
+                              : "text-ink"
+                        }`}
+                      >
+                        {dayNum}
+                      </span>
+                      {ov && (
+                        <span
+                          className={`rounded border px-1 text-[9px] leading-tight ${DATE_OV_BADGE[ov.type]}`}
+                        >
+                          {DATE_OV_LABEL[ov.type]}
+                        </span>
+                      )}
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {selected && (
+        <div className="space-y-2 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <p className="text-xs font-medium text-ink">
+            {formatJpDate(selected)} の設定
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["closed", "全日休"],
+                ["morning", "午前休"],
+                ["afternoon", "午後休"],
+              ] as const
+            ).map(([type, label]) => {
+              const active = selectedOv?.type === type;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() =>
+                    onSet(selected, { type, note: selectedOv?.note })
+                  }
+                  className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                    active
+                      ? "border-accent bg-accent text-accent-fg"
+                      : "border-line text-muted hover:border-accent/60 hover:text-accent"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                onSet(selected, null);
+              }}
+              disabled={!selectedOv}
+              className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted hover:border-danger/40 hover:text-danger disabled:opacity-40"
+            >
+              通常に戻す
+            </button>
+          </div>
+          {selectedOv && (
+            <Input
+              placeholder="メモ（任意、最大100文字）"
+              value={selectedOv.note ?? ""}
+              maxLength={100}
+              onChange={(e) =>
+                onSet(selected, {
+                  type: selectedOv.type,
+                  note: e.target.value || undefined,
+                })
+              }
+              className="h-8 text-xs"
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

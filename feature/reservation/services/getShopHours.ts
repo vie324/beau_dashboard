@@ -19,6 +19,7 @@ export async function getShopHours(
       breakStart: true,
       breakEnd: true,
       hoursByDow: true,
+      dateOverrides: true,
     },
   });
   if (!shop) {
