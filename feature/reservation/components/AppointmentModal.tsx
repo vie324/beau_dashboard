@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -82,7 +82,7 @@ export function AppointmentModal({
       ? toTime(initial.startAt)
       : (prefill?.startTime ?? "10:00"),
     durationMin: initialDuration,
-    menuId: initial?.menuId ?? formData.menus[0]?.id ?? "",
+    menuId: (initial?.menuId ?? formData.menus[0]?.id ?? "") as number | "",
     staffId: initial?.staffId ?? prefill?.staffId ?? "",
     customerId: initial?.customerId ?? "",
     visitSourceId: initial?.visitSourceId ?? "",
@@ -234,26 +234,18 @@ export function AppointmentModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>メニュー</Label>
-            <Select
-              value={form.menuId}
-              onChange={(e) => {
-                const id = Number(e.target.value);
-                const m = formData.menus.find((x) => x.id === id);
+            <MenuCombobox
+              menus={formData.menus}
+              selectedId={form.menuId === "" ? null : Number(form.menuId)}
+              onSelect={(m) =>
                 setForm((f) => ({
                   ...f,
-                  menuId: id,
+                  menuId: m ? m.id : "",
                   durationMin: m?.durationMin ?? f.durationMin,
                   sales: !salesTouched && m ? m.price : f.sales,
-                }));
-              }}
-            >
-              <option value="">（未選択）</option>
-              {formData.menus.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}（{m.durationMin}分 / ¥{m.price.toLocaleString()}）
-                </option>
-              ))}
-            </Select>
+                }))
+              }
+            />
           </div>
           <div>
             <Label>施術時間（分）</Label>
@@ -438,5 +430,122 @@ export function AppointmentModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function MenuCombobox({
+  menus,
+  selectedId,
+  onSelect,
+}: {
+  menus: FormData["menus"];
+  selectedId: number | null;
+  onSelect: (m: FormData["menus"][number] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = useMemo(
+    () => menus.find((m) => m.id === selectedId) ?? null,
+    [menus, selectedId],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return menus;
+    return menus.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.menuManageId.toLowerCase().includes(q),
+    );
+  }, [menus, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const display = open
+    ? query
+    : selected
+      ? `${selected.name}（${selected.durationMin}分 / ¥${selected.price.toLocaleString()}）`
+      : "";
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        type="text"
+        value={display}
+        placeholder="メニュー名・IDで検索"
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => {
+          if (!open) setOpen(true);
+          setQuery(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Enter" && open && filtered[0]) {
+            e.preventDefault();
+            onSelect(filtered[0]);
+            setOpen(false);
+            setQuery("");
+          }
+        }}
+      />
+      {open && (
+        <ul className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-line bg-surface shadow-panel">
+          {selected && (
+            <li>
+              <button
+                type="button"
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => {
+                  onSelect(null);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className="w-full border-b border-line/60 px-3 py-2 text-left text-sm text-faint hover:bg-elevated"
+              >
+                選択を解除
+              </button>
+            </li>
+          )}
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-faint">候補がありません</li>
+          ) : (
+            filtered.map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onMouseDown={(ev) => ev.preventDefault()}
+                  onClick={() => {
+                    onSelect(m);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-elevated ${selectedId === m.id ? "bg-elevated/60" : ""}`}
+                >
+                  <span className="min-w-0 truncate font-medium text-ink">
+                    {m.name}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-xs text-faint">
+                    {m.durationMin}分 / ¥{m.price.toLocaleString()}
+                  </span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
   );
 }

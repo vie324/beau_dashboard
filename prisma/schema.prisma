@@ -154,6 +154,9 @@ model Appointment {
   source        String       @default("manual")
   // false = 確認連絡が未対応（主にオンライン予約）
   confirmed     Boolean      @default(true)
+  // "appointment"（通常予約）/ "block"（予約以外の時間ブロック：休憩・会議・私用 等）
+  kind          String       @default("appointment")
+  blockLabel    String?
   guestName     String?
   guestPhone    String?
   createdAt     DateTime     @default(now())
