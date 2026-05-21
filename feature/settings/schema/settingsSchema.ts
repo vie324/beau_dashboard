@@ -26,6 +26,8 @@ export const shopSchema = z.object({
   closeTime: hhmm,
   breakStart: hhmm,
   breakEnd: hhmm,
+  // JSON string; structure validated when parsed in the action.
+  hoursByDow: z.string().optional().nullable(),
 });
 export type ShopInput = z.infer<typeof shopSchema>;
 

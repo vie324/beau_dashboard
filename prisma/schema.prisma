@@ -57,6 +57,10 @@ model Shop {
   closeTime         String?
   breakStart        String?
   breakEnd          String?
+  // JSON (TEXT): per day-of-week overrides keyed by "0"-"6" (Sun..Sat).
+  // e.g. {"6":{"openTime":"08:30","closeTime":"19:30","breakStart":"12:30","breakEnd":"15:30"},"0":{"closed":true}}
+  // Missing keys fall back to the defaults above.
+  hoursByDow        String?
   createdAt         DateTime  @default(now())
   deletedAt         DateTime?
   brand             Brand     @relation(fields: [brandId], references: [id])

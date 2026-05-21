@@ -23,7 +23,7 @@ export default async function ReservationPage({
   const [reservations, formData, shopHours] = await Promise.all([
     getReservations(shopId, date),
     getReservationFormData(shopId),
-    getShopHours(shopId),
+    getShopHours(shopId, date),
   ]);
 
   return (

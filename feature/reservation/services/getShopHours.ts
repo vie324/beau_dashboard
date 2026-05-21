@@ -1,13 +1,16 @@
 import { db } from "@/helper/lib/db";
+import { resolveHoursForDate, type ResolvedHours } from "@/helper/utils/shopHours";
 
-export type ShopHours = {
-  openTime: string | null;
-  closeTime: string | null;
-  breakStart: string | null;
-  breakEnd: string | null;
-};
+export type ShopHours = ResolvedHours;
 
-export async function getShopHours(shopId: number): Promise<ShopHours> {
+/**
+ * Resolve effective business hours for the given shop on a specific date,
+ * applying day-of-week overrides on top of the shop defaults.
+ */
+export async function getShopHours(
+  shopId: number,
+  dateStr: string,
+): Promise<ShopHours> {
   const shop = await db.shop.findFirst({
     where: { id: shopId, deletedAt: null },
     select: {
@@ -15,12 +18,17 @@ export async function getShopHours(shopId: number): Promise<ShopHours> {
       closeTime: true,
       breakStart: true,
       breakEnd: true,
+      hoursByDow: true,
     },
   });
-  return {
-    openTime: shop?.openTime ?? null,
-    closeTime: shop?.closeTime ?? null,
-    breakStart: shop?.breakStart ?? null,
-    breakEnd: shop?.breakEnd ?? null,
-  };
+  if (!shop) {
+    return {
+      isClosed: false,
+      openTime: null,
+      closeTime: null,
+      breakStart: null,
+      breakEnd: null,
+    };
+  }
+  return resolveHoursForDate(shop, dateStr);
 }
