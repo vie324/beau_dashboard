@@ -29,8 +29,11 @@ type Column = {
   color: string | undefined;
 };
 
-// 15分刻みの各セル高さ (px)。A4 縦 1 枚に営業時間（最大 12-13 時間）が収まる目安。
-const CELL_PX = 18;
+// 各セルの基本高さ (px)。1 日表示で 12-13 時間が A4 縦に収まる目安。
+// 午前/午後のみ表示するときはセル高を動的に拡大して同じくらいの紙面を使う。
+const CELL_PX_BASE = 18;
+const CELL_PX_MAX = 48;
+const TIMELINE_TARGET_PX = 900;
 const MIN_STEP = 15;
 
 function parseHm(s: string | null | undefined): number | null {
@@ -143,7 +146,17 @@ export function PrintTimeline({
       return e > startMin && s < endMin;
     });
 
-  const totalHeight = timeSlots.length * CELL_PX;
+  // セル高さを動的に決定: スロットが少ないとき (午前/午後) はセル高さを拡大して
+  // 1日表示と同じくらい紙面を使う。多いとき (1日全体) は基本値のまま。
+  const cellPx = useMemo(() => {
+    const slots = Math.max(1, timeSlots.length);
+    return Math.max(
+      CELL_PX_BASE,
+      Math.min(CELL_PX_MAX, Math.floor(TIMELINE_TARGET_PX / slots)),
+    );
+  }, [timeSlots.length]);
+
+  const totalHeight = timeSlots.length * cellPx;
 
   return (
     <div className="print-root mx-auto max-w-[210mm] bg-white p-6 text-ink">
@@ -225,7 +238,7 @@ export function PrintTimeline({
                         ? "border-t border-line/40"
                         : "border-t border-line/20"
                   }`}
-                  style={{ height: CELL_PX }}
+                  style={{ height: cellPx }}
                 >
                   <span
                     className={`text-[9px] tabular-nums ${
@@ -282,9 +295,9 @@ export function PrintTimeline({
                     className="absolute inset-x-0 pointer-events-none"
                     style={{
                       top:
-                        ((breakBand.bs - startMin) / MIN_STEP) * CELL_PX,
+                        ((breakBand.bs - startMin) / MIN_STEP) * cellPx,
                       height:
-                        ((breakBand.be - breakBand.bs) / MIN_STEP) * CELL_PX,
+                        ((breakBand.be - breakBand.bs) / MIN_STEP) * cellPx,
                       background:
                         "repeating-linear-gradient(135deg, rgba(155,144,121,0.18) 0 5px, rgba(155,144,121,0.05) 5px 10px)",
                     }}
@@ -295,10 +308,10 @@ export function PrintTimeline({
                 {apptsForColumn(col).map((r) => {
                   const startTotalMin = jstMinutesOfDay(new Date(r.startAt));
                   const endTotalMin = jstMinutesOfDay(new Date(r.endAt));
-                  const top = ((startTotalMin - startMin) / MIN_STEP) * CELL_PX;
+                  const top = ((startTotalMin - startMin) / MIN_STEP) * cellPx;
                   const height = Math.max(
-                    CELL_PX - 2,
-                    ((endTotalMin - startTotalMin) / MIN_STEP) * CELL_PX - 2,
+                    cellPx - 2,
+                    ((endTotalMin - startTotalMin) / MIN_STEP) * cellPx - 2,
                   );
                   const cancelled = [3, 4, 99].includes(r.status);
                   const isBlock = r.kind === "block";
@@ -344,7 +357,7 @@ export function PrintTimeline({
                         )}
                       </div>
                       <div className="truncate font-medium">{name}</div>
-                      {menuName && height > CELL_PX * 1.5 && (
+                      {menuName && height > cellPx * 1.5 && (
                         <div className="truncate text-[8px] text-muted">
                           {menuName}
                         </div>
