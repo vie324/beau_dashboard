@@ -30,6 +30,23 @@ export const appointmentSchema = z
 
 export type AppointmentInput = z.infer<typeof appointmentSchema>;
 
+// 予約以外の時間ブロック（休憩・会議・私用 等）
+export const timeBlockSchema = z.object({
+  id: z.coerce.number().int().positive().optional(),
+  date: z.string().regex(dateRe, "日付を選択してください"),
+  startTime: z.string().regex(timeRe, "開始時刻を入力してください"),
+  durationMin: z.coerce
+    .number()
+    .int()
+    .min(5, "時間は5分以上で入力してください")
+    .max(600),
+  // 未指定（空欄）= 全スタッフを同時にブロック
+  staffId: z.coerce.number().int().positive().optional().nullable(),
+  label: z.string().trim().max(40).optional().nullable(),
+});
+
+export type TimeBlockInput = z.infer<typeof timeBlockSchema>;
+
 // Public booking page — fewer fields, customer always a guest.
 export const publicBookingSchema = z.object({
   slug: z.string().min(1),

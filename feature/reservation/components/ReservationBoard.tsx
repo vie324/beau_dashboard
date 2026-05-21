@@ -7,6 +7,7 @@ import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
 import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
+import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 
@@ -49,11 +50,27 @@ export function ReservationBoard({
   formData: FormData;
   shopHours?: ShopHours;
 }) {
-  const [modal, setModal] = useState<
-    | { mode: "create"; prefill?: { staffId?: number; startTime?: string } }
-    | { mode: "edit"; row: ReservationRow }
-    | null
-  >(null);
+  type ModalState =
+    | {
+        kind: "appointment";
+        mode: "create";
+        prefill?: { staffId?: number; startTime?: string };
+      }
+    | { kind: "appointment"; mode: "edit"; row: ReservationRow }
+    | {
+        kind: "block";
+        mode: "create";
+        prefill?: { staffId?: number; startTime?: string };
+      }
+    | { kind: "block"; mode: "edit"; row: ReservationRow };
+  const [modal, setModal] = useState<ModalState | null>(null);
+
+  const openCardEdit = (r: ReservationRow) =>
+    setModal(
+      r.kind === "block"
+        ? { kind: "block", mode: "edit", row: r }
+        : { kind: "appointment", mode: "edit", row: r },
+    );
 
   // Live "now" in minutes (JST), refreshed every 30s — drives the time cursor.
   const [nowMin, setNowMin] = useState<number | null>(null);
@@ -141,7 +158,21 @@ export function ReservationBoard({
               未確認 {unconfirmed}件
             </span>
           )}
-          <Button size="sm" onClick={() => setModal({ mode: "create" })}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setModal({ kind: "block", mode: "create" })
+            }
+          >
+            ＋ 時間ブロック
+          </Button>
+          <Button
+            size="sm"
+            onClick={() =>
+              setModal({ kind: "appointment", mode: "create" })
+            }
+          >
             ＋ 新規予約
           </Button>
         </div>
@@ -255,6 +286,7 @@ export function ReservationBoard({
                     const raw = startMin + x / PX_PER_MIN;
                     const snapped = Math.round(raw / 15) * 15;
                     setModal({
+                      kind: "appointment",
                       mode: "create",
                       prefill: {
                         staffId: row.staffId ?? undefined,
@@ -288,6 +320,35 @@ export function ReservationBoard({
                         totalW - left,
                       ),
                     );
+                    const isBlock = r.kind === "block";
+                    if (isBlock) {
+                      const label = r.blockLabel ?? "時間ブロック";
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            openCardEdit(r);
+                          }}
+                          title={`${minToTime(s)}–${minToTime(e)} ${label}`}
+                          className="absolute top-1.5 z-10 flex flex-col overflow-hidden rounded-lg border border-line px-2 py-1 text-left text-[11px] text-muted transition-all hover:z-20 hover:border-accent/70 hover:shadow-md"
+                          style={{
+                            left,
+                            width,
+                            height: ROW_H - 12,
+                            background:
+                              "repeating-linear-gradient(45deg, rgba(155,144,121,0.22) 0 6px, rgba(155,144,121,0.08) 6px 12px)",
+                          }}
+                        >
+                          <div className="truncate font-semibold tabular-nums text-ink">
+                            {minToTime(s)}–{minToTime(e)}
+                          </div>
+                          <div className="truncate font-medium text-ink">
+                            {label}
+                          </div>
+                        </button>
+                      );
+                    }
                     const meta = statusMeta(r.status);
                     const cancelled = [3, 4, 99].includes(r.status);
                     const name =
@@ -297,7 +358,7 @@ export function ReservationBoard({
                         key={r.id}
                         onClick={(ev) => {
                           ev.stopPropagation();
-                          setModal({ mode: "edit", row: r });
+                          openCardEdit(r);
                         }}
                         title={`${minToTime(s)}–${minToTime(e)} ${name}`}
                         className={`absolute top-1.5 z-10 flex flex-col overflow-hidden rounded-lg border px-2 py-1 text-left text-[11px] shadow-sm transition-all hover:z-20 hover:border-accent/70 hover:shadow-md ${
@@ -358,15 +419,48 @@ export function ReservationBoard({
             {reservations.map((r) => {
               const s = jstMinutes(r.startAt);
               const e = jstMinutes(r.endAt);
+              const staffName = r.staff?.name ?? "指名なし";
+              if (r.kind === "block") {
+                const label = r.blockLabel ?? "時間ブロック";
+                return (
+                  <li key={r.id}>
+                    <button
+                      onClick={() => openCardEdit(r)}
+                      className="flex w-full items-stretch gap-3 px-4 py-3 text-left text-muted transition-colors active:bg-elevated/60"
+                      style={{
+                        background:
+                          "repeating-linear-gradient(45deg, rgba(155,144,121,0.18) 0 6px, rgba(155,144,121,0.05) 6px 12px)",
+                      }}
+                    >
+                      <span className="w-1 shrink-0 self-stretch rounded-full bg-faint/60" />
+                      <div className="w-12 shrink-0">
+                        <div className="text-sm font-semibold tabular-nums text-ink">
+                          {minToTime(s)}
+                        </div>
+                        <div className="text-[11px] tabular-nums text-faint">
+                          {minToTime(e)}
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-ink">
+                          {label}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted">
+                          {staffName}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                );
+              }
               const meta = statusMeta(r.status);
               const cancelled = [3, 4, 99].includes(r.status);
               const name =
                 r.customer?.name ?? r.guestName ?? "（名称未設定）";
-              const staffName = r.staff?.name ?? "指名なし";
               return (
                 <li key={r.id}>
                   <button
-                    onClick={() => setModal({ mode: "edit", row: r })}
+                    onClick={() => openCardEdit(r)}
                     className={`flex w-full items-stretch gap-3 px-4 py-3 text-left transition-colors active:bg-elevated/60 ${
                       cancelled ? "opacity-60" : ""
                     } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""}`}
@@ -433,7 +527,7 @@ export function ReservationBoard({
         </p>
       )}
 
-      {modal && (
+      {modal?.kind === "appointment" && (
         <AppointmentModal
           key={
             modal.mode === "edit"
@@ -444,6 +538,21 @@ export function ReservationBoard({
           onClose={() => setModal(null)}
           date={date}
           formData={formData}
+          initial={modal.mode === "edit" ? modal.row : null}
+          prefill={modal.mode === "create" ? modal.prefill : undefined}
+        />
+      )}
+      {modal?.kind === "block" && (
+        <TimeBlockModal
+          key={
+            modal.mode === "edit"
+              ? `be${modal.row.id}`
+              : `bc${modal.prefill?.startTime ?? ""}-${modal.prefill?.staffId ?? ""}`
+          }
+          open
+          onClose={() => setModal(null)}
+          date={date}
+          staffs={formData.staffs}
           initial={modal.mode === "edit" ? modal.row : null}
           prefill={modal.mode === "create" ? modal.prefill : undefined}
         />
