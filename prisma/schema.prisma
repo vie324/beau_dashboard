@@ -61,6 +61,10 @@ model Shop {
   // e.g. {"6":{"openTime":"08:30","closeTime":"19:30","breakStart":"12:30","breakEnd":"15:30"},"0":{"closed":true}}
   // Missing keys fall back to the defaults above.
   hoursByDow        String?
+  // JSON (TEXT): specific-date overrides keyed by "YYYY-MM-DD".
+  // e.g. {"2026-05-25":{"type":"closed","note":"祝日"},"2026-05-26":{"type":"morning"},"2026-05-27":{"type":"afternoon"}}
+  // Priority: dateOverrides > hoursByDow > shop defaults.
+  dateOverrides     String?
   createdAt         DateTime  @default(now())
   deletedAt         DateTime?
   brand             Brand     @relation(fields: [brandId], references: [id])

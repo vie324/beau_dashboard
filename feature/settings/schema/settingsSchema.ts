@@ -28,6 +28,8 @@ export const shopSchema = z.object({
   breakEnd: hhmm,
   // JSON string; structure validated when parsed in the action.
   hoursByDow: z.string().optional().nullable(),
+  // JSON string of specific-date overrides; structure validated in the action.
+  dateOverrides: z.string().optional().nullable(),
 });
 export type ShopInput = z.infer<typeof shopSchema>;
 

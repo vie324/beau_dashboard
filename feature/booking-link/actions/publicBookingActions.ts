@@ -74,6 +74,7 @@ export async function getPublicAvailability(input: {
       breakStart: true,
       breakEnd: true,
       hoursByDow: true,
+      dateOverrides: true,
     },
   });
   if (!shop) return { ok: false, error: "店舗の指定が正しくありません" };
