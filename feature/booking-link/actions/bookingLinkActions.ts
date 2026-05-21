@@ -30,7 +30,10 @@ function readForm(formData: FormData) {
       : undefined,
     isActive: formData.get("isActive") === "true",
     requireStaffSelection: formData.get("requireStaffSelection") === "true",
-    lastReceptionMode: formData.get("lastReceptionMode") === "true",
+    allowOverflowAtBreak:
+      (formData.get("allowOverflowAtBreak") ?? "true") === "true",
+    allowOverflowAtClose:
+      (formData.get("allowOverflowAtClose") ?? "true") === "true",
     allowedMenuIds,
     intervalMin: Number(formData.get("intervalMin") ?? 30),
     reminderEnabled: formData.get("reminderEnabled") === "true",
@@ -74,7 +77,8 @@ export async function saveBookingLink(
     description: input.description ?? null,
     isActive: input.isActive,
     requireStaffSelection: input.requireStaffSelection,
-    lastReceptionMode: input.lastReceptionMode,
+    allowOverflowAtBreak: input.allowOverflowAtBreak,
+    allowOverflowAtClose: input.allowOverflowAtClose,
     intervalMin: input.intervalMin,
     allowedMenuIds: JSON.stringify(input.allowedMenuIds),
     reminderSettings: JSON.stringify({

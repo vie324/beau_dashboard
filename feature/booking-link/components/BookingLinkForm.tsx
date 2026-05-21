@@ -33,7 +33,8 @@ export function BookingLinkForm({
     shopId: initial?.shopId ?? "",
     isActive: initial?.isActive ?? true,
     requireStaffSelection: initial?.requireStaffSelection ?? false,
-    lastReceptionMode: initial?.lastReceptionMode ?? false,
+    allowOverflowAtBreak: initial?.allowOverflowAtBreak ?? true,
+    allowOverflowAtClose: initial?.allowOverflowAtClose ?? true,
     intervalMin: initial?.intervalMin ?? 30,
     allowedMenuIds: initial?.allowedMenuIds ?? ([] as number[]),
     reminderEnabled: initial?.reminderEnabled ?? false,
@@ -61,7 +62,8 @@ export function BookingLinkForm({
       shopId: form.shopId === "" ? undefined : Number(form.shopId),
       isActive: form.isActive,
       requireStaffSelection: form.requireStaffSelection,
-      lastReceptionMode: form.lastReceptionMode,
+      allowOverflowAtBreak: form.allowOverflowAtBreak,
+      allowOverflowAtClose: form.allowOverflowAtClose,
       intervalMin: form.intervalMin,
       allowedMenuIds: form.allowedMenuIds,
       reminderEnabled: form.reminderEnabled,
@@ -82,7 +84,8 @@ export function BookingLinkForm({
     if (form.shopId !== "") fd.set("shopId", String(form.shopId));
     fd.set("isActive", String(form.isActive));
     fd.set("requireStaffSelection", String(form.requireStaffSelection));
-    fd.set("lastReceptionMode", String(form.lastReceptionMode));
+    fd.set("allowOverflowAtBreak", String(form.allowOverflowAtBreak));
+    fd.set("allowOverflowAtClose", String(form.allowOverflowAtClose));
     fd.set("intervalMin", String(form.intervalMin));
     fd.set("allowedMenuIds", JSON.stringify(form.allowedMenuIds));
     fd.set("reminderEnabled", String(form.reminderEnabled));
@@ -195,20 +198,42 @@ export function BookingLinkForm({
           </p>
         </div>
 
-        <div className="rounded-xl border border-line bg-base p-3">
-          <label className="flex items-center gap-2 text-sm text-ink">
+        <div className="space-y-2 rounded-xl border border-line bg-base p-3">
+          <p className="text-xs font-medium text-muted">最終受付の挙動</p>
+          <label className="flex items-start gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              checked={form.lastReceptionMode}
-              onChange={(e) => set("lastReceptionMode", e.target.checked)}
-              className="accent-accent"
+              checked={form.allowOverflowAtBreak}
+              onChange={(e) =>
+                set("allowOverflowAtBreak", e.target.checked)
+              }
+              className="mt-0.5 accent-accent"
             />
-            最終受付モード（営業時間 = 受付終了時刻）
+            <span>
+              休憩時間にまたがる予約を許可する
+              <span className="ml-1 block text-[11px] text-faint">
+                施術が休憩開始時刻を越えても開始時刻が休憩前なら予約可
+              </span>
+            </span>
           </label>
-          <p className="mt-1 text-[11px] text-faint">
-            ON にすると、施術が休憩や閉店をまたいでも開始時刻が営業時間内なら予約可能になります。
-            スタッフの昼休みブロックは空き判定から除外されます（実予約は引き続きブロック）。
-            休暇日はスタッフを「予約不可」に切り替えてください。
+          <label className="flex items-start gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={form.allowOverflowAtClose}
+              onChange={(e) =>
+                set("allowOverflowAtClose", e.target.checked)
+              }
+              className="mt-0.5 accent-accent"
+            />
+            <span>
+              営業終了時刻をまたぐ予約を許可する
+              <span className="ml-1 block text-[11px] text-faint">
+                施術が閉店時刻を越えても開始時刻が営業時間内なら予約可
+              </span>
+            </span>
+          </label>
+          <p className="text-[11px] text-faint">
+            時間ブロック（スタッフの昼休み等）は常に予約不可です。
           </p>
         </div>
 

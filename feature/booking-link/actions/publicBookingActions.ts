@@ -121,7 +121,8 @@ export async function getPublicAvailability(input: {
   }
 
   // Appointments across the 7-day window (blocking statuses only).
-  // 最終受付モード: kind="block"（スタッフの昼休み等）はスタッフ重複チェックから除外する。
+  // 時間ブロック (kind="block") はスタッフが確実に不在の意味なので、
+  // 空き判定上は常に「埋まっている」扱い。
   const winStart = jstDateTimeToDate(input.weekStart, "00:00");
   const winEnd = new Date(winStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   const appts = await db.appointment.findMany({
@@ -130,7 +131,6 @@ export async function getPublicAvailability(input: {
       deletedAt: null,
       status: { notIn: [3, 4, 99] },
       startAt: { gte: winStart, lt: winEnd },
-      ...(link.lastReceptionMode ? { kind: { not: "block" } } : {}),
     },
     select: {
       staffId: true,
@@ -193,10 +193,26 @@ export async function getPublicAvailability(input: {
       // 休業日は全枠 NG。営業日は曜日別の open〜close 範囲外も NG。
       if (ok && dh.isClosed) ok = false;
       if (ok && (tMin < dayOpen || tMin > dayClose)) ok = false;
-      // 休憩は「開始が休憩の内側」のときのみ不可。境界（開始＝休憩開始 or 休憩終了）と
-      // 終了側のはみ出しは許可。
+      // 休憩開始の内側スタートは常に NG（境界はOK）。
+      // 休憩をまたぐ予約 (start < bStart < slotEnd) は allowOverflowAtBreak で制御。
       if (ok && bStart != null && bEnd != null) {
         if (tMin > bStart && tMin < bEnd) ok = false;
+        if (
+          ok &&
+          !link.allowOverflowAtBreak &&
+          tMin < bStart &&
+          slotEnd > slotStart + (bStart - tMin) * 60000
+        ) {
+          ok = false;
+        }
+      }
+      // 閉店をまたぐ予約 (slotEnd > dayClose) は allowOverflowAtClose で制御。
+      if (
+        ok &&
+        !link.allowOverflowAtClose &&
+        slotEnd > slotStart + (dayClose - tMin) * 60000
+      ) {
+        ok = false;
       }
       // スタッフ重複: menu.requiresStaff のときだけチェック。
       if (ok && menu.requiresStaff) {
@@ -277,7 +293,15 @@ export async function submitPublicBooking(
       deletedAt: null,
       ...(link.shopId ? { id: link.shopId } : {}),
     },
-    select: { id: true },
+    select: {
+      id: true,
+      openTime: true,
+      closeTime: true,
+      breakStart: true,
+      breakEnd: true,
+      hoursByDow: true,
+      dateOverrides: true,
+    },
   });
   if (!shop) {
     return { ok: false, error: "店舗の指定が正しくありません" };
@@ -307,6 +331,41 @@ export async function submitPublicBooking(
   const startAt = jstDateTimeToDate(input.date, input.startTime);
   const endAt = addMinutes(startAt, menu.durationMin);
 
+  // リンクの最終受付設定をサーバ側でも検証（カレンダーをすり抜けた POST 対策）。
+  const dh = resolveHoursForDate(shop, input.date);
+  if (dh.isClosed) {
+    return { ok: false, error: "休業日のため予約できません" };
+  }
+  const startMin = hm(input.startTime) ?? -1;
+  const openMin = hm(dh.openTime) ?? 0;
+  const closeMin = hm(dh.closeTime) ?? 24 * 60;
+  const bStartMin = hm(dh.breakStart);
+  const bEndMin = hm(dh.breakEnd);
+  if (startMin < openMin || startMin > closeMin) {
+    return { ok: false, error: "営業時間外のため予約できません" };
+  }
+  if (bStartMin != null && bEndMin != null) {
+    if (startMin > bStartMin && startMin < bEndMin) {
+      return { ok: false, error: "休憩時間のため予約できません" };
+    }
+    if (
+      !link.allowOverflowAtBreak &&
+      startMin < bStartMin &&
+      startMin + menu.durationMin > bStartMin
+    ) {
+      return { ok: false, error: "休憩をまたぐ予約はこのリンクでは不可です" };
+    }
+  }
+  if (
+    !link.allowOverflowAtClose &&
+    startMin + menu.durationMin > closeMin
+  ) {
+    return {
+      ok: false,
+      error: "営業終了をまたぐ予約はこのリンクでは不可です",
+    };
+  }
+
   let assignedStaffId: number | null = null;
 
   if (menu.requiresStaff) {
@@ -323,7 +382,7 @@ export async function submitPublicBooking(
         staffId: input.staffId,
         startAt,
         endAt,
-        ignoreBlocks: link.lastReceptionMode,
+        
       });
       if (!avail.available) {
         return {
@@ -347,7 +406,7 @@ export async function submitPublicBooking(
             staffId: s.id,
             startAt,
             endAt,
-            ignoreBlocks: link.lastReceptionMode,
+            
           });
           if (a.available) {
             assignedStaffId = s.id;
@@ -381,7 +440,7 @@ export async function submitPublicBooking(
       equipmentId: menu.equipmentId,
       startAt,
       endAt,
-      ignoreBlocks: link.lastReceptionMode,
+      
     });
     if (!avail.available) {
       return {
