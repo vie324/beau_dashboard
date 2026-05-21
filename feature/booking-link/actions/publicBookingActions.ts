@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { jstDateTimeToDate, addMinutes } from "@/helper/utils/time";
 import { resolveHoursForDate } from "@/helper/utils/shopHours";
-import { checkStaffAvailability } from "@/feature/reservation/actions/reservationActions";
+import {
+  checkStaffAvailability,
+  checkEquipmentAvailability,
+} from "@/feature/reservation/actions/reservationActions";
 import { publicBookingSchema } from "@/feature/reservation/schema/reservationSchema";
 
 export type PublicResult =
@@ -88,7 +91,12 @@ export async function getPublicAvailability(input: {
       OR: [{ shopId: null }, { shopId: shop.id }],
       ...(allowed.length ? { id: { in: allowed } } : {}),
     },
-    select: { id: true, durationMin: true },
+    select: {
+      id: true,
+      durationMin: true,
+      requiresStaff: true,
+      equipmentId: true,
+    },
   });
   if (!menu) return { ok: false, error: "メニューの指定が正しくありません" };
 
@@ -99,6 +107,17 @@ export async function getPublicAvailability(input: {
   let candidates = allStaff.map((s) => s.id);
   if (link.requireStaffSelection && input.staffId) {
     candidates = candidates.filter((id) => id === input.staffId);
+  }
+
+  // メニューが設備を要求するなら、その設備が予約可能でなければ枠なし。
+  if (menu.equipmentId) {
+    const eq = await db.equipment.findFirst({
+      where: { id: menu.equipmentId, deletedAt: null, isBookable: true },
+      select: { id: true },
+    });
+    if (!eq) {
+      return { ok: true, times: [], days: [] };
+    }
   }
 
   // Appointments across the 7-day window (blocking statuses only).
@@ -113,10 +132,16 @@ export async function getPublicAvailability(input: {
       startAt: { gte: winStart, lt: winEnd },
       ...(link.lastReceptionMode ? { kind: { not: "block" } } : {}),
     },
-    select: { staffId: true, startAt: true, endAt: true },
+    select: {
+      staffId: true,
+      equipmentId: true,
+      startAt: true,
+      endAt: true,
+    },
   });
   const apptMs = appts.map((a) => ({
     staffId: a.staffId,
+    equipmentId: a.equipmentId,
     s: new Date(a.startAt).getTime(),
     e: new Date(a.endAt).getTime(),
   }));
@@ -173,7 +198,8 @@ export async function getPublicAvailability(input: {
       if (ok && bStart != null && bEnd != null) {
         if (tMin > bStart && tMin < bEnd) ok = false;
       }
-      if (ok) {
+      // スタッフ重複: menu.requiresStaff のときだけチェック。
+      if (ok && menu.requiresStaff) {
         if (candidates.length) {
           ok = candidates.some(
             (sid) =>
@@ -183,8 +209,18 @@ export async function getPublicAvailability(input: {
               ),
           );
         } else {
-          ok = !apptMs.some((a) => a.s < slotEnd && a.e > slotStart);
+          // スタッフ必須なのに候補が居ない → 予約不可
+          ok = false;
         }
+      }
+      // 設備重複: メニューが設備を指定しているならその設備の空きをチェック。
+      if (ok && menu.equipmentId) {
+        ok = !apptMs.some(
+          (a) =>
+            a.equipmentId === menu.equipmentId &&
+            a.s < slotEnd &&
+            a.e > slotStart,
+        );
       }
       avail[t] = ok;
     }
@@ -256,7 +292,13 @@ export async function submitPublicBooking(
       OR: [{ shopId: null }, { shopId: shop.id }],
       ...(allowed.length ? { id: { in: allowed } } : {}),
     },
-    select: { id: true, durationMin: true, price: true },
+    select: {
+      id: true,
+      durationMin: true,
+      price: true,
+      requiresStaff: true,
+      equipmentId: true,
+    },
   });
   if (!menu) {
     return { ok: false, error: "メニューの指定が正しくありません" };
@@ -265,18 +307,78 @@ export async function submitPublicBooking(
   const startAt = jstDateTimeToDate(input.date, input.startTime);
   const endAt = addMinutes(startAt, menu.durationMin);
 
-  let assignedStaffId: number | null = input.staffId ?? null;
+  let assignedStaffId: number | null = null;
 
-  if (input.staffId) {
-    const staff = await db.staff.findFirst({
-      where: { id: input.staffId, shopId: shop.id, deletedAt: null },
+  if (menu.requiresStaff) {
+    if (input.staffId) {
+      const staff = await db.staff.findFirst({
+        where: { id: input.staffId, shopId: shop.id, deletedAt: null },
+        select: { id: true },
+      });
+      if (!staff)
+        return { ok: false, error: "スタッフの指定が正しくありません" };
+
+      const avail = await checkStaffAvailability({
+        shopId: shop.id,
+        staffId: input.staffId,
+        startAt,
+        endAt,
+        ignoreBlocks: link.lastReceptionMode,
+      });
+      if (!avail.available) {
+        return {
+          ok: false,
+          error:
+            "指定の時間帯は予約が埋まっています。別の時間をお選びください",
+        };
+      }
+      assignedStaffId = input.staffId;
+    } else {
+      // 指名なし: 設定の割当優先順（allocateOrder 昇順）で空きスタッフへ自動割当。
+      const staffs = await db.staff.findMany({
+        where: { shopId: shop.id, deletedAt: null, isBookable: true },
+        orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
+        select: { id: true },
+      });
+      if (staffs.length) {
+        for (const s of staffs) {
+          const a = await checkStaffAvailability({
+            shopId: shop.id,
+            staffId: s.id,
+            startAt,
+            endAt,
+            ignoreBlocks: link.lastReceptionMode,
+          });
+          if (a.available) {
+            assignedStaffId = s.id;
+            break;
+          }
+        }
+        if (assignedStaffId == null) {
+          return {
+            ok: false,
+            error: "ご指定の時間は満席です。別の時間をお選びください",
+          };
+        }
+      }
+    }
+  }
+
+  // 設備のチェック: メニューが設備を指定していれば空きを確認。
+  if (menu.equipmentId) {
+    const equip = await db.equipment.findFirst({
+      where: { id: menu.equipmentId, deletedAt: null, isBookable: true },
       select: { id: true },
     });
-    if (!staff) return { ok: false, error: "スタッフの指定が正しくありません" };
-
-    const avail = await checkStaffAvailability({
+    if (!equip) {
+      return {
+        ok: false,
+        error: "この設備は現在予約できません",
+      };
+    }
+    const avail = await checkEquipmentAvailability({
       shopId: shop.id,
-      staffId: input.staffId,
+      equipmentId: menu.equipmentId,
       startAt,
       endAt,
       ignoreBlocks: link.lastReceptionMode,
@@ -284,36 +386,8 @@ export async function submitPublicBooking(
     if (!avail.available) {
       return {
         ok: false,
-        error: "指定の時間帯は予約が埋まっています。別の時間をお選びください",
+        error: "指定の時間帯は設備が埋まっています。別の時間をお選びください",
       };
-    }
-  } else {
-    // 指名なし: 設定の割当優先順（allocateOrder 昇順）で空きスタッフへ自動割当。
-    const staffs = await db.staff.findMany({
-      where: { shopId: shop.id, deletedAt: null, isBookable: true },
-      orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
-      select: { id: true },
-    });
-    if (staffs.length) {
-      for (const s of staffs) {
-        const a = await checkStaffAvailability({
-          shopId: shop.id,
-          staffId: s.id,
-          startAt,
-          endAt,
-          ignoreBlocks: link.lastReceptionMode,
-        });
-        if (a.available) {
-          assignedStaffId = s.id;
-          break;
-        }
-      }
-      if (assignedStaffId == null) {
-        return {
-          ok: false,
-          error: "ご指定の時間は満席です。別の時間をお選びください",
-        };
-      }
     }
   }
 
@@ -323,6 +397,7 @@ export async function submitPublicBooking(
         shopId: shop.id,
         menuId: menu.id,
         staffId: assignedStaffId,
+        equipmentId: menu.equipmentId ?? null,
         bookingLinkId: link.id,
         startAt,
         endAt,

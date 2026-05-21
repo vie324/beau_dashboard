@@ -70,6 +70,8 @@ import {
   deleteShop,
   saveStaff,
   deleteStaff,
+  saveEquipment,
+  deleteEquipment,
   saveMenu,
   deleteMenu,
   saveVisitSource,
@@ -80,15 +82,17 @@ import {
 import type {
   ShopRow,
   StaffRow,
+  EquipmentRow,
   MenuRow,
   VisitSourceRow,
 } from "@/feature/settings/services/getSettingsData";
 
-type Tab = "shops" | "staff" | "menus" | "vsources";
+type Tab = "shops" | "staff" | "equipments" | "menus" | "vsources";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "shops", label: "店舗" },
   { key: "staff", label: "スタッフ" },
+  { key: "equipments", label: "設備" },
   { key: "menus", label: "メニュー" },
   { key: "vsources", label: "来店経路" },
 ];
@@ -96,12 +100,14 @@ const TABS: { key: Tab; label: string }[] = [
 export function SettingsClient({
   shops,
   staffs,
+  equipments,
   menus,
   visitSources,
   activeShopName,
 }: {
   shops: ShopRow[];
   staffs: StaffRow[];
+  equipments: EquipmentRow[];
   menus: MenuRow[];
   visitSources: VisitSourceRow[];
   activeShopName: string;
@@ -266,12 +272,74 @@ export function SettingsClient({
         </Section>
       )}
 
+      {tab === "equipments" && (
+        <Section
+          title={`設備一覧（${activeShopName}）`}
+          hint="楽トレ・水素吸引機など、メニューで使う機器・設備。メニュー側で「使う設備」を指定すると、その時間帯の設備の空き状況も自動でチェックされます。"
+          onAdd={() =>
+            setModal(
+              <EquipmentForm
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveEquipment, fd)}
+                pending={pending}
+              />,
+            )
+          }
+        >
+          {equipments.length === 0 && <Empty>設備がありません</Empty>}
+          {equipments.map((e) => (
+            <Row
+              key={e.id}
+              title={
+                <span className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-3 rounded-full ring-1 ring-line"
+                    style={{ background: e.color }}
+                  />
+                  {e.name}
+                </span>
+              }
+              meta={
+                <span className="flex items-center gap-2 text-faint">
+                  表示順 {e.sortNumber}
+                  {e.isBookable ? (
+                    <Badge className="border-ok/30 bg-ok/15 text-ok">
+                      予約可
+                    </Badge>
+                  ) : (
+                    <Badge className="border-line bg-base text-faint">
+                      予約不可
+                    </Badge>
+                  )}
+                </span>
+              }
+              onEdit={() =>
+                setModal(
+                  <EquipmentForm
+                    initial={e}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveEquipment, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (confirm(`「${e.name}」を削除しますか？`))
+                  run(() => deleteEquipment(e.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
       {tab === "menus" && (
         <Section
           title="メニュー一覧"
           onAdd={() =>
             setModal(
               <MenuForm
+                equipments={equipments}
                 onClose={() => setModal(null)}
                 onSubmit={(fd) => submitForm(saveMenu, fd)}
                 pending={pending}
@@ -280,7 +348,13 @@ export function SettingsClient({
           }
         >
           {menus.length === 0 && <Empty>メニューがありません</Empty>}
-          {menus.map((m) => (
+          {menus.map((m) => {
+            const eqName =
+              m.equipmentId != null
+                ? (equipments.find((e) => e.id === m.equipmentId)?.name ??
+                  null)
+                : null;
+            return (
             <Row
               key={m.id}
               title={m.name}
@@ -296,6 +370,16 @@ export function SettingsClient({
                       この店舗のみ
                     </Badge>
                   )}
+                  {!m.requiresStaff && (
+                    <Badge className="border-line bg-base text-muted">
+                      スタッフ不要
+                    </Badge>
+                  )}
+                  {eqName && (
+                    <Badge className="border-accent/30 bg-accent/10 text-accent-hover">
+                      設備: {eqName}
+                    </Badge>
+                  )}
                   {!m.isPublic && (
                     <Badge className="border-line bg-base text-faint">
                       非公開
@@ -307,6 +391,7 @@ export function SettingsClient({
                 setModal(
                   <MenuForm
                     initial={m}
+                    equipments={equipments}
                     onClose={() => setModal(null)}
                     onSubmit={(fd) => submitForm(saveMenu, fd)}
                     pending={pending}
@@ -319,7 +404,8 @@ export function SettingsClient({
               }}
               pending={pending}
             />
-          ))}
+            );
+          })}
         </Section>
       )}
 
@@ -1003,11 +1089,13 @@ function StaffForm({
 
 function MenuForm({
   initial,
+  equipments,
   onClose,
   onSubmit,
   pending,
 }: {
   initial?: MenuRow;
+  equipments: EquipmentRow[];
   onClose: () => void;
   onSubmit: (fd: FormData) => void;
   pending: boolean;
@@ -1019,6 +1107,8 @@ function MenuForm({
     isPublic: initial?.isPublic ?? true,
     sortNumber: initial?.sortNumber ?? 0,
     brandCommon: initial ? initial.shopId == null : true,
+    requiresStaff: initial?.requiresStaff ?? true,
+    equipmentId: initial?.equipmentId ?? null,
   });
   const submit = () => {
     const fd = new FormData();
@@ -1029,6 +1119,8 @@ function MenuForm({
     fd.set("isPublic", f.isPublic ? "true" : "false");
     fd.set("sortNumber", String(f.sortNumber));
     fd.set("brandCommon", f.brandCommon ? "true" : "false");
+    fd.set("requiresStaff", f.requiresStaff ? "true" : "false");
+    if (f.equipmentId != null) fd.set("equipmentId", String(f.equipmentId));
     onSubmit(fd);
   };
   return (
@@ -1099,6 +1191,121 @@ function MenuForm({
             className="h-4 w-4 accent-accent"
           />
           オンライン予約ページに公開する
+        </label>
+
+        <div className="rounded-xl border border-line bg-base/40 p-3">
+          <p className="mb-2 text-xs font-medium text-muted">使うリソース</p>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={f.requiresStaff}
+              onChange={(e) =>
+                setF({ ...f, requiresStaff: e.target.checked })
+              }
+              className="h-4 w-4 accent-accent"
+            />
+            スタッフが必要（外すと「機械単独」メニューになります）
+          </label>
+          <div className="mt-3">
+            <Field label="使う設備（任意）">
+              <Select
+                value={f.equipmentId == null ? "" : String(f.equipmentId)}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    equipmentId:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              >
+                <option value="">なし</option>
+                {equipments.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <p className="mt-1 text-[11px] text-faint">
+              設備を選ぶと、予約時にその設備の空き状況も自動でチェックされます。スタッフ不要+設備指定で「楽トレ」「水素吸引」などの機械単独メニューになります。
+            </p>
+          </div>
+        </div>
+
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
+  );
+}
+
+function EquipmentForm({
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  initial?: EquipmentRow;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    color: initial?.color ?? "#a9803f",
+    sortNumber: initial?.sortNumber ?? 0,
+    isBookable: initial?.isBookable ?? true,
+  });
+  const submit = () => {
+    const fd = new FormData();
+    if (initial) fd.set("id", String(initial.id));
+    fd.set("name", f.name);
+    fd.set("color", f.color);
+    fd.set("sortNumber", String(f.sortNumber));
+    fd.set("isBookable", f.isBookable ? "true" : "false");
+    onSubmit(fd);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "設備を編集" : "設備を追加"}
+    >
+      <div className="space-y-4">
+        <Field label="設備名">
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="楽トレ"
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="表示色">
+            <input
+              type="color"
+              value={f.color}
+              onChange={(e) => setF({ ...f, color: e.target.value })}
+              className="h-10 w-full cursor-pointer rounded-xl border border-line bg-base"
+            />
+          </Field>
+          <Field label="表示順">
+            <Input
+              type="number"
+              min={0}
+              value={f.sortNumber}
+              onChange={(e) =>
+                setF({ ...f, sortNumber: Number(e.target.value) || 0 })
+              }
+            />
+          </Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={f.isBookable}
+            onChange={(e) => setF({ ...f, isBookable: e.target.checked })}
+            className="h-4 w-4 accent-accent"
+          />
+          予約可能（外すと一時的に使えなくなります）
         </label>
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>

@@ -53,19 +53,40 @@ export const staffSchema = z.object({
 });
 export type StaffInput = z.infer<typeof staffSchema>;
 
-export const menuSchema = z.object({
+export const equipmentSchema = z.object({
   id,
-  name: z.string().trim().min(1, "メニュー名を入力してください").max(120),
-  durationMin: z.coerce
-    .number()
-    .int()
-    .min(5, "施術時間は5分以上で入力してください")
-    .max(600)
-    .default(60),
-  price: z.coerce.number().int().min(0).max(10_000_000).default(0),
-  isPublic: bool.default(true),
+  name: z.string().trim().min(1, "設備名を入力してください").max(80),
+  color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, "色は #RRGGBB 形式で入力してください")
+    .default("#a9803f"),
   sortNumber: z.coerce.number().int().min(0).max(9999).default(0),
-  // true = 全店舗共通 (shopId null), false = この店舗のみ
-  brandCommon: bool.default(true),
+  isBookable: bool.default(true),
 });
+export type EquipmentInput = z.infer<typeof equipmentSchema>;
+
+export const menuSchema = z
+  .object({
+    id,
+    name: z.string().trim().min(1, "メニュー名を入力してください").max(120),
+    durationMin: z.coerce
+      .number()
+      .int()
+      .min(5, "施術時間は5分以上で入力してください")
+      .max(600)
+      .default(60),
+    price: z.coerce.number().int().min(0).max(10_000_000).default(0),
+    isPublic: bool.default(true),
+    sortNumber: z.coerce.number().int().min(0).max(9999).default(0),
+    // true = 全店舗共通 (shopId null), false = この店舗のみ
+    brandCommon: bool.default(true),
+    // リソース要否。少なくとも一方は必要。
+    requiresStaff: bool.default(true),
+    equipmentId: z.coerce.number().int().positive().optional().nullable(),
+  })
+  .refine((m) => m.requiresStaff || m.equipmentId != null, {
+    message: "スタッフ・設備のいずれか一方は必須です",
+    path: ["requiresStaff"],
+  });
 export type MenuInput = z.infer<typeof menuSchema>;
