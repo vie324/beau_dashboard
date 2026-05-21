@@ -131,23 +131,42 @@ export function ReservationBoard({
   }, []);
 
   const rows = useMemo(() => {
-    const r = formData.staffs.map((s) => ({
+    const r: {
+      key: string;
+      staffId: number | null;
+      equipmentId: number | null;
+      name: string;
+      color: string | undefined;
+    }[] = formData.staffs.map((s) => ({
       key: `staff-${s.id}`,
-      staffId: s.id as number | null,
+      staffId: s.id,
+      equipmentId: null,
       name: s.name,
       color: s.color as string | undefined,
     }));
-    const hasUnassigned = reservations.some((x) => x.staffId == null);
+    for (const eq of formData.equipments ?? []) {
+      r.push({
+        key: `equip-${eq.id}`,
+        staffId: null,
+        equipmentId: eq.id,
+        name: eq.name,
+        color: eq.color as string | undefined,
+      });
+    }
+    const hasUnassigned = reservations.some(
+      (x) => x.staffId == null && x.equipmentId == null,
+    );
     if (hasUnassigned || r.length === 0) {
       r.push({
         key: "unassigned",
         staffId: null,
+        equipmentId: null,
         name: "指名なし",
         color: undefined,
       });
     }
     return r;
-  }, [formData.staffs, reservations]);
+  }, [formData.staffs, formData.equipments, reservations]);
 
   const { startMin, endMin } = useMemo(() => {
     let start = parseHm(shopHours?.openTime) ?? BASE_START;
@@ -181,8 +200,17 @@ export function ReservationBoard({
     return arr;
   }, [startMin, endMin]);
 
-  const byRow = (staffId: number | null) =>
-    reservations.filter((r) => (r.staffId ?? null) === staffId);
+  const byRow = (row: {
+    staffId: number | null;
+    equipmentId: number | null;
+  }) =>
+    reservations.filter((r) => {
+      if (row.staffId != null) return r.staffId === row.staffId;
+      if (row.equipmentId != null)
+        return r.staffId == null && r.equipmentId === row.equipmentId;
+      // "指名なし" 行: スタッフも設備も付いていない予約
+      return r.staffId == null && r.equipmentId == null;
+    });
 
   const showNow =
     date === today &&
@@ -447,7 +475,7 @@ export function ReservationBoard({
                     />
                   ))}
 
-                  {byRow(row.staffId).map((r) => {
+                  {byRow(row).map((r) => {
                     const s = jstMinutes(r.startAt);
                     const e = jstMinutes(r.endAt);
                     const rawLeft = (s - startMin) * PX_PER_MIN;

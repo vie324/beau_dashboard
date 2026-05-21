@@ -55,6 +55,48 @@ export async function checkStaffAvailability(params: {
     : { available: true };
 }
 
+/**
+ * True when the equipment is free in the given window. Mirrors
+ * checkStaffAvailability for the equipment dimension. kind="block" は
+ * 通常スタッフ単位で入るので equipmentId は付いていないが、念のため
+ * ignoreBlocks を受け取れるようにしておく。
+ */
+export async function checkEquipmentAvailability(params: {
+  shopId: number;
+  equipmentId: number;
+  startAt: Date;
+  endAt: Date;
+  excludeAppointmentId?: number;
+  ignoreBlocks?: boolean;
+}): Promise<{ available: boolean; conflictId?: number }> {
+  const {
+    shopId,
+    equipmentId,
+    startAt,
+    endAt,
+    excludeAppointmentId,
+    ignoreBlocks,
+  } = params;
+
+  const conflict = await db.appointment.findFirst({
+    where: {
+      shopId,
+      equipmentId,
+      deletedAt: null,
+      status: { notIn: FREEING_STATUSES },
+      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+      ...(ignoreBlocks ? { kind: { not: "block" } } : {}),
+      startAt: { lt: endAt },
+      endAt: { gt: startAt },
+    },
+    select: { id: true },
+  });
+
+  return conflict
+    ? { available: false, conflictId: conflict.id }
+    : { available: true };
+}
+
 function parse(formData: FormData) {
   const raw = Object.fromEntries(formData.entries());
   // Normalise empty strings to undefined so optional/nullable works.
@@ -70,6 +112,16 @@ async function upsert(
 ): Promise<ActionResult> {
   const startAt = jstDateTimeToDate(input.date, input.startTime);
   const endAt = addMinutes(startAt, input.durationMin);
+
+  // メニューから設備指定 (equipmentId) を引いて、予約時にも空き判定を行う。
+  let equipmentId: number | null = null;
+  if (input.menuId) {
+    const menu = await db.menu.findFirst({
+      where: { id: input.menuId, deletedAt: null },
+      select: { equipmentId: true },
+    });
+    equipmentId = menu?.equipmentId ?? null;
+  }
 
   if (input.staffId) {
     const avail = await checkStaffAvailability({
@@ -87,11 +139,28 @@ async function upsert(
     }
   }
 
+  if (equipmentId) {
+    const avail = await checkEquipmentAvailability({
+      shopId,
+      equipmentId,
+      startAt,
+      endAt,
+      excludeAppointmentId: input.id,
+    });
+    if (!avail.available) {
+      return {
+        ok: false,
+        error: "この時間帯は対象の設備が他の予約で埋まっています",
+      };
+    }
+  }
+
   const data = {
     shopId,
     customerId: input.customerId ?? null,
     staffId: input.staffId ?? null,
     menuId: input.menuId ?? null,
+    equipmentId,
     visitSourceId: input.visitSourceId ?? null,
     guestName: input.guestName ?? null,
     guestPhone: input.guestPhone ?? null,

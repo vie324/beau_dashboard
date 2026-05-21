@@ -23,6 +23,7 @@ export default async function SettingsPage() {
       <SettingsClient
         shops={data.shops}
         staffs={data.staffs}
+        equipments={data.equipments}
         menus={data.menus}
         visitSources={data.visitSources}
         activeShopName={activeShopName}

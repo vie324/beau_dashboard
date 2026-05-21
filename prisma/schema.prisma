@@ -72,6 +72,23 @@ model Shop {
   customers         Customer[]
   appointments      Appointment[]
   visitSources      VisitSource[]
+  equipments        Equipment[]
+}
+
+// 設備（楽トレ・水素吸引機 等）。スタッフの代わりにメニューの「リソース」として
+// 予約される。複数台ある場合は同じ名前で複数行を作るのではなく、別名で管理する。
+model Equipment {
+  id           Int           @id @default(autoincrement())
+  shopId       Int
+  name         String
+  color        String        @default("#a9803f")
+  sortNumber   Int           @default(0)
+  isBookable   Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  deletedAt    DateTime?
+  shop         Shop          @relation(fields: [shopId], references: [id])
+  menus        Menu[]
+  appointments Appointment[]
 }
 
 model Staff {
@@ -124,9 +141,16 @@ model Menu {
   price        Int           @default(0)
   isPublic     Boolean       @default(true)
   sortNumber   Int           @default(0)
+  // メニュー実施に必要なリソース。スタッフ必須 + 設備指定の3パターン:
+  //   ①スタッフのみ: requiresStaff=true, equipmentId=null (既存挙動)
+  //   ②設備のみ:     requiresStaff=false, equipmentId=N (楽トレ・水素 等)
+  //   ③両方:         requiresStaff=true, equipmentId=N
+  requiresStaff Boolean      @default(true)
+  equipmentId  Int?
   createdAt    DateTime      @default(now())
   deletedAt    DateTime?
   category     MenuCategory? @relation(fields: [categoryId], references: [id])
+  equipment    Equipment?    @relation(fields: [equipmentId], references: [id])
   appointments Appointment[]
 }
 
@@ -149,6 +173,7 @@ model Appointment {
   customerId    Int?
   staffId       Int?
   menuId        Int?
+  equipmentId   Int?
   visitSourceId Int?
   bookingLinkId Int?
   startAt       DateTime
@@ -174,11 +199,13 @@ model Appointment {
   customer      Customer?    @relation(fields: [customerId], references: [id])
   staff         Staff?       @relation(fields: [staffId], references: [id])
   menu          Menu?        @relation(fields: [menuId], references: [id])
+  equipment     Equipment?   @relation(fields: [equipmentId], references: [id])
   visitSource   VisitSource? @relation(fields: [visitSourceId], references: [id])
   bookingLink   BookingLink? @relation(fields: [bookingLinkId], references: [id])
 
   @@index([shopId, startAt])
   @@index([staffId, startAt])
+  @@index([equipmentId, startAt])
 }
 
 // ---- Booking links (強制リンク) — brand-common, shopId NULL allowed ----

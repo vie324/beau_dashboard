@@ -7,6 +7,7 @@ import { getActiveBrandId, getActiveShopId } from "@/helper/lib/shop-context";
 import {
   shopSchema,
   staffSchema,
+  equipmentSchema,
   menuSchema,
   visitSourceSchema,
 } from "@/feature/settings/schema/settingsSchema";
@@ -194,6 +195,83 @@ export async function deleteStaff(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
+/* ---------------- Equipment (設備：楽トレ・水素吸引機 等) ---------------- */
+
+export async function saveEquipment(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  const parsed = equipmentSchema.safeParse(
+    Object.fromEntries(formData.entries()),
+  );
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  const input = parsed.data;
+  const shopId = await getActiveShopId();
+
+  try {
+    if (input.id) {
+      const exists = await db.equipment.findFirst({
+        where: { id: input.id, shopId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!exists) return fail("設備が見つかりません");
+      await db.equipment.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          color: input.color,
+          sortNumber: input.sortNumber,
+          isBookable: input.isBookable,
+        },
+      });
+    } else {
+      await db.equipment.create({
+        data: {
+          shopId,
+          name: input.name,
+          color: input.color,
+          sortNumber: input.sortNumber,
+          isBookable: input.isBookable,
+        },
+      });
+    }
+  } catch {
+    return fail("保存に失敗しました。時間をおいて再度お試しください");
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+export async function deleteEquipment(id: number): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  const shopId = await getActiveShopId();
+  const exists = await db.equipment.findFirst({
+    where: { id, shopId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!exists) return fail("設備が見つかりません");
+
+  const usingMenus = await db.menu.count({
+    where: { equipmentId: id, deletedAt: null },
+  });
+  if (usingMenus > 0) {
+    return fail(
+      `この設備を使うメニューが ${usingMenus} 件あります。先にメニュー側の紐付けを変更してください`,
+    );
+  }
+  try {
+    await db.equipment.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  } catch {
+    return fail("削除に失敗しました");
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
 /* ---------------- Menus ---------------- */
 
 export async function saveMenu(
@@ -227,6 +305,8 @@ export async function saveMenu(
           isPublic: input.isPublic,
           sortNumber: input.sortNumber,
           shopId: targetShopId,
+          requiresStaff: input.requiresStaff,
+          equipmentId: input.equipmentId ?? null,
         },
       });
     } else {
@@ -241,6 +321,8 @@ export async function saveMenu(
           isPublic: input.isPublic,
           sortNumber: input.sortNumber,
           shopId: targetShopId,
+          requiresStaff: input.requiresStaff,
+          equipmentId: input.equipmentId ?? null,
         },
       });
     }

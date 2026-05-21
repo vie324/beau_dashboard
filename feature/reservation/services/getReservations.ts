@@ -19,6 +19,7 @@ export async function getReservations(shopId: number, dateStr: string) {
     orderBy: { startAt: "asc" },
     include: {
       staff: { select: { id: true, name: true, color: true } },
+      equipment: { select: { id: true, name: true, color: true } },
       customer: { select: { id: true, name: true, phone: true } },
       menu: { select: { id: true, name: true, durationMin: true } },
       visitSource: {
