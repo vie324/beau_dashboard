@@ -18,6 +18,7 @@ export const bookingLinkSchema = z.object({
   shopId: z.coerce.number().int().positive().optional().nullable(),
   isActive: z.coerce.boolean().default(true),
   requireStaffSelection: z.coerce.boolean().default(false),
+  lastReceptionMode: z.coerce.boolean().default(false),
   allowedMenuIds: z.array(z.coerce.number().int().positive()).default([]),
   intervalMin: z.coerce
     .number()

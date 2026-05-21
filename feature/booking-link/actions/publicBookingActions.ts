@@ -104,6 +104,7 @@ export async function getPublicAvailability(input: {
   }
 
   // Appointments across the 7-day window (blocking statuses only).
+  // 最終受付モード: kind="block"（スタッフの昼休み等）はスタッフ重複チェックから除外する。
   const winStart = jstDateTimeToDate(input.weekStart, "00:00");
   const winEnd = new Date(winStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   const appts = await db.appointment.findMany({
@@ -112,6 +113,7 @@ export async function getPublicAvailability(input: {
       deletedAt: null,
       status: { notIn: [3, 4, 99] },
       startAt: { gte: winStart, lt: winEnd },
+      ...(link.lastReceptionMode ? { kind: { not: "block" } } : {}),
     },
     select: { staffId: true, startAt: true, endAt: true },
   });
@@ -260,6 +262,7 @@ export async function submitPublicBooking(
       staffId: input.staffId,
       startAt,
       endAt,
+      ignoreBlocks: link.lastReceptionMode,
     });
     if (!avail.available) {
       return {
@@ -281,6 +284,7 @@ export async function submitPublicBooking(
           staffId: s.id,
           startAt,
           endAt,
+          ignoreBlocks: link.lastReceptionMode,
         });
         if (a.available) {
           assignedStaffId = s.id;
