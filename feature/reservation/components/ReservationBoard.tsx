@@ -239,6 +239,19 @@ export function ReservationBoard({
             size="sm"
             variant="outline"
             onClick={() =>
+              window.open(
+                `/reservation/print?date=${encodeURIComponent(date)}`,
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
+          >
+            印刷 / PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
               setModal({ kind: "block", mode: "create" })
             }
           >
