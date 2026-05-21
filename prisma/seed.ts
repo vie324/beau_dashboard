@@ -190,7 +190,7 @@ async function main() {
     ].map((c) => db.customer.create({ data: { ...c, shopId: ginza.id } })),
   );
 
-  // Booking link (brand-common: shopId null) — 強制リンク
+  // Booking link (brand-common: shopId null) — 予約リンク
   await db.bookingLink.create({
     data: {
       brandId: brand.id,

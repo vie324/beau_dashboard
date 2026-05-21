@@ -154,7 +154,7 @@ export function ReservationBoard({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-panel">
+      <div className="hidden overflow-x-auto rounded-xl border border-line bg-surface shadow-panel sm:block">
         <div style={{ width: STAFF_W + totalW, minWidth: "100%" }}>
           {/* Header: time axis */}
           <div
@@ -347,8 +347,88 @@ export function ReservationBoard({
         </div>
       </div>
 
+      {/* スマホ専用: 予約を時間順の縦リストで表示（PCは上の横グリッド） */}
+      <div className="sm:hidden">
+        {reservations.length === 0 ? (
+          <p className="rounded-xl border border-line bg-surface px-4 py-10 text-center text-sm text-faint shadow-panel">
+            この日の予約はありません。「＋ 新規予約」から追加できます。
+          </p>
+        ) : (
+          <ul className="divide-y divide-line/70 overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
+            {reservations.map((r) => {
+              const s = jstMinutes(r.startAt);
+              const e = jstMinutes(r.endAt);
+              const meta = statusMeta(r.status);
+              const cancelled = [3, 4, 99].includes(r.status);
+              const name =
+                r.customer?.name ?? r.guestName ?? "（名称未設定）";
+              const staffName = r.staff?.name ?? "指名なし";
+              return (
+                <li key={r.id}>
+                  <button
+                    onClick={() => setModal({ mode: "edit", row: r })}
+                    className={`flex w-full items-stretch gap-3 px-4 py-3 text-left transition-colors active:bg-elevated/60 ${
+                      cancelled ? "opacity-60" : ""
+                    } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""}`}
+                  >
+                    <span
+                      className="w-1 shrink-0 self-stretch rounded-full"
+                      style={{
+                        background:
+                          r.visitSource?.labelTextColor ?? "#d8b06a",
+                      }}
+                    />
+                    <div className="w-12 shrink-0">
+                      <div className="text-sm font-semibold tabular-nums text-ink">
+                        {minToTime(s)}
+                      </div>
+                      <div className="text-[11px] tabular-nums text-faint">
+                        {minToTime(e)}
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium text-ink">
+                          {name}
+                        </span>
+                        {!r.confirmed && !cancelled && (
+                          <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold text-warn">
+                            未確認
+                          </span>
+                        )}
+                      </div>
+                      {r.menu && (
+                        <div className="mt-0.5 truncate text-xs text-faint">
+                          {r.menu.name}
+                        </div>
+                      )}
+                      <div className="mt-1 flex items-center gap-2">
+                        {r.staff?.color && (
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-line"
+                            style={{ background: r.staff.color ?? undefined }}
+                          />
+                        )}
+                        <span className="truncate text-xs text-muted">
+                          {staffName}
+                        </span>
+                      </div>
+                    </div>
+                    <Badge
+                      className={`${meta.className} shrink-0 self-start whitespace-nowrap`}
+                    >
+                      {meta.label}
+                    </Badge>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       {reservations.length === 0 && (
-        <p className="mt-4 text-center text-sm text-faint">
+        <p className="mt-4 hidden text-center text-sm text-faint sm:block">
           この日の予約はありません。タイムラインをクリックして追加できます。
         </p>
       )}
