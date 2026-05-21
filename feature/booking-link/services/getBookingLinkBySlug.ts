@@ -7,6 +7,7 @@ export type PublicBookingData = {
     name: string;
     description: string | null;
     requireStaffSelection: boolean;
+    intervalMin: number;
   };
   shops: { id: number; name: string }[];
   menus: {
@@ -83,6 +84,7 @@ export async function getBookingLinkBySlug(
       name: link.name,
       description: link.description,
       requireStaffSelection: link.requireStaffSelection,
+      intervalMin: link.intervalMin,
     },
     shops,
     menus,

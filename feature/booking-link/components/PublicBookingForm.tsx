@@ -45,7 +45,7 @@ export function PublicBookingForm({
 
   const [shopId, setShopId] = useState<number>(data.shops[0]?.id ?? 0);
   const [menuId, setMenuId] = useState<number>(data.menus[0]?.id ?? 0);
-  const [interval, setIntervalMin] = useState(30);
+  const interval = data.link.intervalMin;
   const [staffId, setStaffId] = useState<string>("");
 
   const [avail, setAvail] = useState<AvailabilityResult | null>(null);
@@ -141,35 +141,22 @@ export function PublicBookingForm({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {data.link.requireStaffSelection && (
-          <div>
-            <Label>ご希望スタッフ</Label>
-            <Select
-              value={staffId}
-              onChange={(e) => setStaffId(e.target.value)}
-            >
-              <option value="">指名なし</option>
-              {staffOptions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
+      {data.link.requireStaffSelection && (
         <div>
-          <Label>時間間隔</Label>
+          <Label>ご希望スタッフ</Label>
           <Select
-            value={interval}
-            onChange={(e) => setIntervalMin(Number(e.target.value))}
+            value={staffId}
+            onChange={(e) => setStaffId(e.target.value)}
           >
-            <option value={15}>15分単位</option>
-            <option value={30}>30分単位</option>
-            <option value={60}>60分単位</option>
+            <option value="">指名なし</option>
+            {staffOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
           </Select>
         </div>
-      </div>
+      )}
 
       {/* Week navigation */}
       <div className="flex items-center justify-between">

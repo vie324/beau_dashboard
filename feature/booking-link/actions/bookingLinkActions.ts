@@ -31,6 +31,7 @@ function readForm(formData: FormData) {
     isActive: formData.get("isActive") === "true",
     requireStaffSelection: formData.get("requireStaffSelection") === "true",
     allowedMenuIds,
+    intervalMin: Number(formData.get("intervalMin") ?? 30),
     reminderEnabled: formData.get("reminderEnabled") === "true",
     reminderHoursBefore: Number(formData.get("reminderHoursBefore") ?? 24),
   };
@@ -72,6 +73,7 @@ export async function saveBookingLink(
     description: input.description ?? null,
     isActive: input.isActive,
     requireStaffSelection: input.requireStaffSelection,
+    intervalMin: input.intervalMin,
     allowedMenuIds: JSON.stringify(input.allowedMenuIds),
     reminderSettings: JSON.stringify({
       enabled: input.reminderEnabled,

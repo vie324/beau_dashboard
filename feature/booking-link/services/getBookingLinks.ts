@@ -9,6 +9,7 @@ export type BookingLinkRow = {
   shopName: string | null;
   isActive: boolean;
   requireStaffSelection: boolean;
+  intervalMin: number;
   allowedMenuIds: number[];
   reminderEnabled: boolean;
   reminderHoursBefore: number;
@@ -76,6 +77,7 @@ export async function getBookingLinks(
       shopName: l.shopId ? (shopName.get(l.shopId) ?? null) : null,
       isActive: l.isActive,
       requireStaffSelection: l.requireStaffSelection,
+      intervalMin: l.intervalMin,
       allowedMenuIds: parseMenuIds(l.allowedMenuIds),
       reminderEnabled: reminder.enabled,
       reminderHoursBefore: reminder.hoursBefore,
