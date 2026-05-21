@@ -27,7 +27,7 @@ export function TimeBlockModal({
   date: string;
   staffs: { id: number; name: string }[];
   initial?: ReservationRow | null;
-  prefill?: { staffId?: number; startTime?: string };
+  prefill?: { staffId?: number; startTime?: string; durationMin?: number };
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -64,7 +64,7 @@ export function TimeBlockModal({
     startTime: initial
       ? toTime(initial.startAt)
       : (prefill?.startTime ?? "12:00"),
-    durationMin: initialDuration,
+    durationMin: initial ? initialDuration : (prefill?.durationMin ?? 60),
     staffId: initial?.staffId ?? prefill?.staffId ?? "",
     label: initial?.blockLabel ?? "",
   });
