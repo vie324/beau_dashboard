@@ -24,8 +24,17 @@ export async function checkStaffAvailability(params: {
   startAt: Date;
   endAt: Date;
   excludeAppointmentId?: number;
+  // 最終受付モード等で kind="block" を無視するためのオプション。
+  ignoreBlocks?: boolean;
 }): Promise<{ available: boolean; conflictId?: number }> {
-  const { shopId, staffId, startAt, endAt, excludeAppointmentId } = params;
+  const {
+    shopId,
+    staffId,
+    startAt,
+    endAt,
+    excludeAppointmentId,
+    ignoreBlocks,
+  } = params;
 
   const conflict = await db.appointment.findFirst({
     where: {
@@ -34,6 +43,7 @@ export async function checkStaffAvailability(params: {
       deletedAt: null,
       status: { notIn: FREEING_STATUSES },
       ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+      ...(ignoreBlocks ? { kind: { not: "block" } } : {}),
       startAt: { lt: endAt },
       endAt: { gt: startAt },
     },

@@ -184,6 +184,9 @@ model BookingLink {
   description           String?
   isActive              Boolean       @default(true)
   requireStaffSelection Boolean       @default(false)
+  // 最終受付モード。true のときスタッフ重複チェックで kind="block" を除外する。
+  // 「営業時間 = 受付終了時刻」運用（施術が休憩/閉店をまたいでも可）のためのフラグ。
+  lastReceptionMode     Boolean       @default(false)
   // Slot interval shown on the public booking calendar. 15 / 30 / 60 minutes.
   intervalMin           Int           @default(30)
   // JSON (TEXT): array of allowed menu ids, e.g. "[1,2,3]"
