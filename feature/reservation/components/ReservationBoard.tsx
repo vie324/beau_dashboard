@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
@@ -10,6 +10,7 @@ import { AppointmentModal } from "@/feature/reservation/components/AppointmentMo
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
+import type { ReservationOptimisticAction } from "@/feature/reservation/types/optimistic";
 
 const BASE_START = 9 * 60; // 09:00 default window
 const BASE_END = 21 * 60; // 21:00
@@ -40,7 +41,7 @@ type FormData = React.ComponentProps<typeof AppointmentModal>["formData"];
 export function ReservationBoard({
   date,
   today,
-  reservations,
+  reservations: reservationsProp,
   formData,
   shopHours,
 }: {
@@ -50,6 +51,33 @@ export function ReservationBoard({
   formData: FormData;
   shopHours?: ShopHours;
 }) {
+  // 楽観的更新: 保存/削除した瞬間にカレンダー側で先行反映。
+  // サーバーが revalidatePath を呼んだ後、props が新しいデータに切り替わったら
+  // useOptimistic が自動でそれに同期する。
+  const [reservations, applyOptimistic] = useOptimistic<
+    ReservationRow[],
+    ReservationOptimisticAction
+  >(reservationsProp, (state, action) => {
+    const byStart = (a: ReservationRow, b: ReservationRow) =>
+      new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+    switch (action.type) {
+      case "add":
+        return [...state.filter((r) => r.id !== action.row.id), action.row].sort(
+          byStart,
+        );
+      case "addMany": {
+        const newIds = new Set(action.rows.map((r) => r.id));
+        return [...state.filter((r) => !newIds.has(r.id)), ...action.rows].sort(
+          byStart,
+        );
+      }
+      case "update":
+        return state.map((r) => (r.id === action.row.id ? action.row : r));
+      case "delete":
+        return state.filter((r) => r.id !== action.id);
+    }
+  });
+
   type ModalState =
     | {
         kind: "appointment";
@@ -656,6 +684,7 @@ export function ReservationBoard({
           formData={formData}
           initial={modal.mode === "edit" ? modal.row : null}
           prefill={modal.mode === "create" ? modal.prefill : undefined}
+          onOptimistic={applyOptimistic}
         />
       )}
       {modal?.kind === "block" && (
@@ -671,6 +700,7 @@ export function ReservationBoard({
           staffs={formData.staffs}
           initial={modal.mode === "edit" ? modal.row : null}
           prefill={modal.mode === "create" ? modal.prefill : undefined}
+          onOptimistic={applyOptimistic}
         />
       )}
     </>
