@@ -173,7 +173,7 @@ export function BookingLinkList({
                         run(() => deleteBookingLink(l.id));
                       }}
                     >
-                      削除
+                      {pending ? "削除中…" : "削除"}
                     </Button>
                   </div>
                 </td>

@@ -136,7 +136,7 @@ export function CustomersClient({ customers }: { customers: CustomerRow[] }) {
                     onClick={() => handleDelete(c)}
                     disabled={pending}
                   >
-                    削除
+                    {pending ? "削除中…" : "削除"}
                   </Button>
                 </div>
               </li>

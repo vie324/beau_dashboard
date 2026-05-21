@@ -393,7 +393,7 @@ function Row({
           onClick={onDelete}
           disabled={pending}
         >
-          削除
+          {pending ? "削除中…" : "削除"}
         </Button>
       </div>
     </li>
