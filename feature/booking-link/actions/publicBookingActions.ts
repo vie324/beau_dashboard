@@ -123,7 +123,8 @@ export async function getPublicAvailability(input: {
 
   const now = Date.now();
   const times: string[] = [];
-  for (let m = openMin; m + menu.durationMin <= closeMin; m += interval) {
+  // 開始時刻は閉店時刻まで許可（メニュー所要時間で終了が閉店を越えても可：サロン側で延長対応）
+  for (let m = openMin; m <= closeMin; m += interval) {
     times.push(
       `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
         m % 60,
@@ -147,10 +148,11 @@ export async function getPublicAvailability(input: {
       const tMin = hm(t)!;
       const slotStart = jstDateTimeToDate(date, t).getTime();
       const slotEnd = slotStart + menu.durationMin * 60000;
-      const endMin = tMin + menu.durationMin;
       let ok = slotStart >= now;
+      // 休憩は「開始が休憩の内側」のときのみ不可。境界（開始＝休憩開始 or 休憩終了）と
+      // 終了側のはみ出しは許可。
       if (ok && bStart != null && bEnd != null) {
-        if (tMin < bEnd && endMin > bStart) ok = false;
+        if (tMin > bStart && tMin < bEnd) ok = false;
       }
       if (ok) {
         if (candidates.length) {
