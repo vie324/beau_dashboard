@@ -56,10 +56,9 @@ export async function checkStaffAvailability(params: {
 }
 
 /**
- * True when the equipment is free in the given window. Mirrors
- * checkStaffAvailability for the equipment dimension. kind="block" は
- * 通常スタッフ単位で入るので equipmentId は付いていないが、念のため
- * ignoreBlocks を受け取れるようにしておく。
+ * True when the equipment has at least one available unit in the given
+ * window (i.e. overlapping bookings < capacity). When `capacity` is not
+ * supplied it is loaded from DB.
  */
 export async function checkEquipmentAvailability(params: {
   shopId: number;
@@ -68,7 +67,8 @@ export async function checkEquipmentAvailability(params: {
   endAt: Date;
   excludeAppointmentId?: number;
   ignoreBlocks?: boolean;
-}): Promise<{ available: boolean; conflictId?: number }> {
+  capacity?: number;
+}): Promise<{ available: boolean }> {
   const {
     shopId,
     equipmentId,
@@ -78,7 +78,16 @@ export async function checkEquipmentAvailability(params: {
     ignoreBlocks,
   } = params;
 
-  const conflict = await db.appointment.findFirst({
+  let capacity = params.capacity;
+  if (capacity == null) {
+    const eq = await db.equipment.findFirst({
+      where: { id: equipmentId, deletedAt: null },
+      select: { capacity: true },
+    });
+    capacity = eq?.capacity ?? 1;
+  }
+
+  const conflicts = await db.appointment.count({
     where: {
       shopId,
       equipmentId,
@@ -89,12 +98,9 @@ export async function checkEquipmentAvailability(params: {
       startAt: { lt: endAt },
       endAt: { gt: startAt },
     },
-    select: { id: true },
   });
 
-  return conflict
-    ? { available: false, conflictId: conflict.id }
-    : { available: true };
+  return { available: conflicts < capacity };
 }
 
 function parse(formData: FormData) {

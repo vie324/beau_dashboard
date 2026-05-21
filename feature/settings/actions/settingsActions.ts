@@ -222,6 +222,7 @@ export async function saveEquipment(
           name: input.name,
           color: input.color,
           sortNumber: input.sortNumber,
+          capacity: input.capacity,
           isBookable: input.isBookable,
         },
       });
@@ -232,6 +233,7 @@ export async function saveEquipment(
           name: input.name,
           color: input.color,
           sortNumber: input.sortNumber,
+          capacity: input.capacity,
           isBookable: input.isBookable,
         },
       });

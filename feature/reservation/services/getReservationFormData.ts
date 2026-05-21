@@ -11,7 +11,7 @@ export async function getReservationFormData(shopId: number) {
     db.equipment.findMany({
       where: { shopId, deletedAt: null, isBookable: true },
       orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
-      select: { id: true, name: true, color: true },
+      select: { id: true, name: true, color: true, capacity: true },
     }),
     // Hybrid: brand-common (shopId null) OR this shop.
     db.menu.findMany({

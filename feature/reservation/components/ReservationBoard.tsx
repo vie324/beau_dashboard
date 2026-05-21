@@ -130,28 +130,71 @@ export function ReservationBoard({
     return () => clearInterval(id);
   }, []);
 
+  // 設備の予約を「レーン」（=台ごとの段）に振り分ける。greedy: 開始時刻順に、
+  // 直近で空いている最小レーンへ。capacity を超えたら最終レーンへフォールバック。
+  const equipmentLaneByApptId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const eq of formData.equipments ?? []) {
+      const apps = reservations
+        .filter(
+          (r) => r.equipmentId === eq.id && r.staffId == null,
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+        );
+      const laneEndsMs: number[] = [];
+      const cap = (eq as { capacity?: number }).capacity ?? 1;
+      for (const a of apps) {
+        const s = new Date(a.startAt).getTime();
+        const e = new Date(a.endAt).getTime();
+        let lane = laneEndsMs.findIndex((end) => end <= s);
+        if (lane < 0) {
+          if (laneEndsMs.length < cap) {
+            lane = laneEndsMs.length;
+            laneEndsMs.push(e);
+          } else {
+            // 上限超過: 最終レーンに重ねる（保存時の重複検査をすり抜けたケース）
+            lane = cap - 1;
+            laneEndsMs[lane] = Math.max(laneEndsMs[lane] ?? 0, e);
+          }
+        } else {
+          laneEndsMs[lane] = e;
+        }
+        map.set(a.id, lane);
+      }
+    }
+    return map;
+  }, [formData.equipments, reservations]);
+
   const rows = useMemo(() => {
     const r: {
       key: string;
       staffId: number | null;
       equipmentId: number | null;
+      equipmentLane: number | null;
       name: string;
       color: string | undefined;
     }[] = formData.staffs.map((s) => ({
       key: `staff-${s.id}`,
       staffId: s.id,
       equipmentId: null,
+      equipmentLane: null,
       name: s.name,
       color: s.color as string | undefined,
     }));
     for (const eq of formData.equipments ?? []) {
-      r.push({
-        key: `equip-${eq.id}`,
-        staffId: null,
-        equipmentId: eq.id,
-        name: eq.name,
-        color: eq.color as string | undefined,
-      });
+      const cap = (eq as { capacity?: number }).capacity ?? 1;
+      for (let i = 0; i < Math.max(1, cap); i++) {
+        r.push({
+          key: `equip-${eq.id}-${i}`,
+          staffId: null,
+          equipmentId: eq.id,
+          equipmentLane: i,
+          name: cap > 1 ? `${eq.name} #${i + 1}` : eq.name,
+          color: eq.color as string | undefined,
+        });
+      }
     }
     const hasUnassigned = reservations.some(
       (x) => x.staffId == null && x.equipmentId == null,
@@ -161,6 +204,7 @@ export function ReservationBoard({
         key: "unassigned",
         staffId: null,
         equipmentId: null,
+        equipmentLane: null,
         name: "指名なし",
         color: undefined,
       });
@@ -203,11 +247,16 @@ export function ReservationBoard({
   const byRow = (row: {
     staffId: number | null;
     equipmentId: number | null;
+    equipmentLane: number | null;
   }) =>
     reservations.filter((r) => {
       if (row.staffId != null) return r.staffId === row.staffId;
-      if (row.equipmentId != null)
-        return r.staffId == null && r.equipmentId === row.equipmentId;
+      if (row.equipmentId != null) {
+        if (r.staffId != null || r.equipmentId !== row.equipmentId)
+          return false;
+        const lane = equipmentLaneByApptId.get(r.id) ?? 0;
+        return lane === row.equipmentLane;
+      }
       // "指名なし" 行: スタッフも設備も付いていない予約
       return r.staffId == null && r.equipmentId == null;
     });

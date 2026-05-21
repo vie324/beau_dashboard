@@ -110,14 +110,16 @@ export async function getPublicAvailability(input: {
   }
 
   // メニューが設備を要求するなら、その設備が予約可能でなければ枠なし。
+  let equipmentCapacity = 1;
   if (menu.equipmentId) {
     const eq = await db.equipment.findFirst({
       where: { id: menu.equipmentId, deletedAt: null, isBookable: true },
-      select: { id: true },
+      select: { id: true, capacity: true },
     });
     if (!eq) {
       return { ok: true, times: [], days: [] };
     }
+    equipmentCapacity = eq.capacity;
   }
 
   // Appointments across the 7-day window (blocking statuses only).
@@ -213,14 +215,20 @@ export async function getPublicAvailability(input: {
           ok = false;
         }
       }
-      // 設備重複: メニューが設備を指定しているならその設備の空きをチェック。
+      // 設備重複: 同時間帯の重複件数が capacity 未満なら ◎。
       if (ok && menu.equipmentId) {
-        ok = !apptMs.some(
-          (a) =>
+        let used = 0;
+        for (const a of apptMs) {
+          if (
             a.equipmentId === menu.equipmentId &&
             a.s < slotEnd &&
-            a.e > slotStart,
-        );
+            a.e > slotStart
+          ) {
+            used += 1;
+            if (used >= equipmentCapacity) break;
+          }
+        }
+        ok = used < equipmentCapacity;
       }
       avail[t] = ok;
     }
