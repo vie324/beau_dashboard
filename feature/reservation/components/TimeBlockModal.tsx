@@ -6,11 +6,13 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { timeSlots } from "@/helper/utils/timeOptions";
+import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
 import {
   saveTimeBlock,
   deleteTimeBlock,
 } from "@/feature/reservation/actions/reservationActions";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
+import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/optimistic";
 
 const TIME_SLOTS_15 = timeSlots(15);
 
@@ -21,6 +23,7 @@ export function TimeBlockModal({
   staffs,
   initial,
   prefill,
+  onOptimistic,
 }: {
   open: boolean;
   onClose: () => void;
@@ -28,6 +31,7 @@ export function TimeBlockModal({
   staffs: { id: number; name: string }[];
   initial?: ReservationRow | null;
   prefill?: { staffId?: number; startTime?: string; durationMin?: number };
+  onOptimistic?: ReservationOptimisticDispatch;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -74,6 +78,40 @@ export function TimeBlockModal({
     value: (typeof form)[K],
   ) => setForm((f) => ({ ...f, [key]: value }));
 
+  function buildBlockRow(staffId: number, idOverride: number): ReservationRow {
+    const startAt = jstDateTimeToDate(form.date, form.startTime);
+    const endAt = addMinutes(startAt, form.durationMin);
+    const staff = staffs.find((s) => s.id === staffId) ?? null;
+    return {
+      id: idOverride,
+      shopId: initial?.shopId ?? 0,
+      customerId: null,
+      staffId,
+      menuId: null,
+      visitSourceId: null,
+      bookingLinkId: null,
+      startAt,
+      endAt,
+      status: 0,
+      sales: null,
+      note: null,
+      isMemberJoin: false,
+      source: "manual",
+      confirmed: true,
+      kind: "block",
+      blockLabel: form.label.trim() || null,
+      guestName: null,
+      guestPhone: null,
+      createdAt: initial?.createdAt ?? new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      customer: null,
+      staff: staff ? { id: staff.id, name: staff.name, color: null } : null,
+      menu: null,
+      visitSource: null,
+    } as unknown as ReservationRow;
+  }
+
   function submit() {
     setError(null);
     const fd = new FormData();
@@ -84,7 +122,31 @@ export function TimeBlockModal({
     if (form.staffId) fd.set("staffId", String(form.staffId));
     if (form.label.trim()) fd.set("label", form.label.trim());
 
+    // 楽観的更新: 編集はそのID、新規（個別）は一時ID、新規（全員）はスタッフ毎に一時ID
+    const targetStaffId = form.staffId ? Number(form.staffId) : null;
+    let optimisticAction:
+      | Parameters<NonNullable<typeof onOptimistic>>[0]
+      | null = null;
+    if (initial?.id) {
+      optimisticAction = {
+        type: "update",
+        row: buildBlockRow(initial.staffId ?? 0, initial.id),
+      };
+    } else if (targetStaffId) {
+      optimisticAction = {
+        type: "add",
+        row: buildBlockRow(targetStaffId, -Date.now()),
+      };
+    } else {
+      const base = -Date.now();
+      optimisticAction = {
+        type: "addMany",
+        rows: staffs.map((s, i) => buildBlockRow(s.id, base - i)),
+      };
+    }
+
     startTransition(async () => {
+      if (optimisticAction) onOptimistic?.(optimisticAction);
       const res = await saveTimeBlock(null, fd);
       if (res.ok) {
         onClose();
@@ -99,6 +161,7 @@ export function TimeBlockModal({
     if (!initial) return;
     if (!confirm("この時間ブロックを削除しますか？")) return;
     startTransition(async () => {
+      onOptimistic?.({ type: "delete", id: initial.id });
       const res = await deleteTimeBlock(initial.id);
       if (res.ok) {
         onClose();

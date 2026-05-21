@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { STATUS_OPTIONS } from "@/helper/utils/status";
 import { timeSlots } from "@/helper/utils/timeOptions";
+import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
 
 const TIME_SLOTS_15 = timeSlots(15);
 import { appointmentSchema } from "@/feature/reservation/schema/reservationSchema";
@@ -16,6 +17,7 @@ import {
   setAppointmentConfirmed,
 } from "@/feature/reservation/actions/reservationActions";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
+import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/optimistic";
 
 type FormData = {
   staffs: { id: number; name: string; color?: string }[];
@@ -42,6 +44,7 @@ export function AppointmentModal({
   formData,
   initial,
   prefill,
+  onOptimistic,
 }: {
   open: boolean;
   onClose: () => void;
@@ -49,6 +52,7 @@ export function AppointmentModal({
   formData: FormData;
   initial?: ReservationRow | null;
   prefill?: { staffId?: number; startTime?: string };
+  onOptimistic?: ReservationOptimisticDispatch;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -107,6 +111,70 @@ export function AppointmentModal({
     value: (typeof form)[K],
   ) => setForm((f) => ({ ...f, [key]: value }));
 
+  /** 楽観的更新用の ReservationRow を現在のフォーム値から組み立てる。 */
+  function buildOptimisticRow(idOverride?: number): ReservationRow {
+    const sId =
+      typeof form.staffId === "number"
+        ? form.staffId
+        : form.staffId === ""
+          ? null
+          : Number(form.staffId);
+    const cId =
+      typeof form.customerId === "number"
+        ? form.customerId
+        : form.customerId === ""
+          ? null
+          : Number(form.customerId);
+    const mId = form.menuId === "" ? null : Number(form.menuId);
+    const vId =
+      typeof form.visitSourceId === "number"
+        ? form.visitSourceId
+        : form.visitSourceId === ""
+          ? null
+          : Number(form.visitSourceId);
+    const startAt = jstDateTimeToDate(form.date, form.startTime);
+    const endAt = addMinutes(startAt, form.durationMin);
+    const staff = sId ? (formData.staffs.find((s) => s.id === sId) ?? null) : null;
+    const customer = cId
+      ? (formData.customers.find((c) => c.id === cId) ?? null)
+      : null;
+    const menu = mId ? (formData.menus.find((m) => m.id === mId) ?? null) : null;
+    return {
+      id: idOverride ?? initial?.id ?? -Date.now(),
+      shopId: initial?.shopId ?? 0,
+      customerId: cId,
+      staffId: sId,
+      menuId: mId,
+      visitSourceId: vId,
+      bookingLinkId: initial?.bookingLinkId ?? null,
+      startAt,
+      endAt,
+      status: form.status,
+      sales: form.sales === "" ? null : Number(form.sales),
+      note: form.note || null,
+      isMemberJoin: initial?.isMemberJoin ?? false,
+      source: initial?.source ?? "manual",
+      confirmed: initial?.confirmed ?? true,
+      kind: initial?.kind ?? "appointment",
+      blockLabel: initial?.blockLabel ?? null,
+      guestName: cId ? null : form.guestName || null,
+      guestPhone: cId ? null : form.guestPhone || null,
+      createdAt: initial?.createdAt ?? new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      customer: customer
+        ? { id: customer.id, name: customer.name, phone: customer.phone }
+        : null,
+      staff: staff
+        ? { id: staff.id, name: staff.name, color: staff.color ?? null }
+        : null,
+      menu: menu
+        ? { id: menu.id, name: menu.name, durationMin: menu.durationMin }
+        : null,
+      visitSource: initial?.visitSource ?? null,
+    } as unknown as ReservationRow;
+  }
+
   function submit() {
     setError(null);
     const payload = {
@@ -137,7 +205,15 @@ export function AppointmentModal({
       if (v !== undefined && v !== null) fd.set(k, String(v));
     });
 
+    const optimisticRow = buildOptimisticRow();
+    const isUpdate = Boolean(initial?.id);
+
     startTransition(async () => {
+      onOptimistic?.(
+        isUpdate
+          ? { type: "update", row: optimisticRow }
+          : { type: "add", row: optimisticRow },
+      );
       const res = await saveAppointment(null, fd);
       if (res.ok) {
         onClose();
@@ -152,6 +228,7 @@ export function AppointmentModal({
     if (!initial) return;
     if (!confirm("この予約を削除しますか？")) return;
     startTransition(async () => {
+      onOptimistic?.({ type: "delete", id: initial.id });
       const res = await deleteAppointment(initial.id);
       if (res.ok) {
         onClose();
@@ -191,6 +268,10 @@ export function AppointmentModal({
               onClick={() =>
                 startTransition(async () => {
                   setError(null);
+                  onOptimistic?.({
+                    type: "update",
+                    row: { ...initial, confirmed: !initial.confirmed },
+                  });
                   const r = await setAppointmentConfirmed(
                     initial.id,
                     !initial.confirmed,
