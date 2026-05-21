@@ -1,9 +1,17 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import { formatJpDate, jstMinutesOfDay } from "@/helper/utils/time";
+
+type Session = "all" | "morning" | "afternoon";
+
+const SESSION_LABEL: Record<Session, string> = {
+  all: "1日",
+  morning: "午前",
+  afternoon: "午後",
+};
 
 type FormData = {
   staffs: { id: number; name: string; color?: string }[];
@@ -44,29 +52,16 @@ export function PrintTimeline({
   formData,
   shopHours,
   shopName,
+  initialSession = "all",
 }: {
   date: string;
   reservations: ReservationRow[];
   formData: FormData;
   shopHours: ShopHours;
   shopName: string;
+  initialSession?: Session;
 }) {
-  const { startMin, endMin } = useMemo(() => {
-    let start = parseHm(shopHours.openTime) ?? 9 * 60;
-    let end = parseHm(shopHours.closeTime) ?? 21 * 60;
-    if (end <= start) {
-      start = 9 * 60;
-      end = 21 * 60;
-    }
-    // 営業時間外に予約があれば範囲を広げる（表示漏れを防ぐ）
-    for (const r of reservations) {
-      const s = jstMinutesOfDay(new Date(r.startAt));
-      const e = jstMinutesOfDay(new Date(r.endAt));
-      if (s < start) start = Math.floor(s / 60) * 60;
-      if (e > end) end = Math.ceil(e / 60) * 60;
-    }
-    return { startMin: start, endMin: end };
-  }, [shopHours, reservations]);
+  const [session, setSession] = useState<Session>(initialSession);
 
   const breakBand = useMemo(() => {
     const bs = parseHm(shopHours.breakStart);
@@ -74,6 +69,37 @@ export function PrintTimeline({
     if (bs == null || be == null || be <= bs) return null;
     return { bs, be };
   }, [shopHours]);
+
+  const hasBreak = breakBand != null;
+
+  const { startMin, endMin } = useMemo(() => {
+    let start = parseHm(shopHours.openTime) ?? 9 * 60;
+    let end = parseHm(shopHours.closeTime) ?? 21 * 60;
+    if (end <= start) {
+      start = 9 * 60;
+      end = 21 * 60;
+    }
+    // 午前/午後セッションは break 境界で範囲を絞り、はみ出し予約は許容するが
+    // 表示は対象セッション内に限定する。break 未定義のときは全日扱い。
+    if (session === "morning" && breakBand) {
+      end = breakBand.bs;
+    } else if (session === "afternoon" && breakBand) {
+      start = breakBand.be;
+    } else {
+      // all のとき、営業時間外に予約があれば範囲を広げる（表示漏れを防ぐ）。
+      for (const r of reservations) {
+        const s = jstMinutesOfDay(new Date(r.startAt));
+        const e = jstMinutesOfDay(new Date(r.endAt));
+        if (s < start) start = Math.floor(s / 60) * 60;
+        if (e > end) end = Math.ceil(e / 60) * 60;
+      }
+    }
+    if (end <= start) {
+      start = 9 * 60;
+      end = 21 * 60;
+    }
+    return { startMin: start, endMin: end };
+  }, [shopHours, reservations, session, breakBand]);
 
   const timeSlots = useMemo(() => {
     const arr: number[] = [];
@@ -103,10 +129,18 @@ export function PrintTimeline({
 
   const apptsForColumn = (col: Column) =>
     reservations.filter((r) => {
-      if (col.staffId != null) return r.staffId === col.staffId;
-      if (col.equipmentId != null)
-        return r.staffId == null && r.equipmentId === col.equipmentId;
-      return false;
+      // Resource match
+      const resourceOk =
+        col.staffId != null
+          ? r.staffId === col.staffId
+          : col.equipmentId != null
+            ? r.staffId == null && r.equipmentId === col.equipmentId
+            : false;
+      if (!resourceOk) return false;
+      // 表示中の時間範囲に少しでも重なるものだけ
+      const s = jstMinutesOfDay(new Date(r.startAt));
+      const e = jstMinutesOfDay(new Date(r.endAt));
+      return e > startMin && s < endMin;
     });
 
   const totalHeight = timeSlots.length * CELL_PX;
@@ -126,6 +160,11 @@ export function PrintTimeline({
         <div>
           <h1 className="text-lg font-bold tracking-wide">
             {formatJpDate(date)} の予約
+            {session !== "all" && (
+              <span className="ml-2 rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                {SESSION_LABEL[session]}
+              </span>
+            )}
             <span className="ml-3 text-sm font-normal text-muted">
               {fmt(startMin)}〜{fmt(endMin)}
             </span>
@@ -134,13 +173,33 @@ export function PrintTimeline({
             <p className="text-xs text-muted">{shopName}</p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="no-print rounded-lg border border-line bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:bg-accent-hover"
-        >
-          印刷 / PDF 出力
-        </button>
+        <div className="no-print flex items-center gap-2">
+          {hasBreak && (
+            <div className="inline-flex rounded-lg border border-line bg-surface p-0.5">
+              {(Object.keys(SESSION_LABEL) as Session[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSession(key)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    session === key
+                      ? "bg-accent text-accent-fg"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {SESSION_LABEL[key]}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="rounded-lg border border-line bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:bg-accent-hover"
+          >
+            印刷 / PDF 出力
+          </button>
+        </div>
       </div>
 
       <div className="flex border border-line">
@@ -210,15 +269,15 @@ export function PrintTimeline({
               </div>
 
               <div
-                className="relative"
+                className="relative overflow-hidden"
                 style={{
                   height: totalHeight,
                   background:
                     "repeating-linear-gradient(0deg, transparent 0 17px, rgba(0,0,0,0.04) 17px 18px)",
                 }}
               >
-                {/* Break overlay */}
-                {breakBand && (
+                {/* Break overlay (1日のときだけ; 午前/午後は範囲外なので不要) */}
+                {breakBand && session === "all" && (
                   <div
                     className="absolute inset-x-0 pointer-events-none"
                     style={{

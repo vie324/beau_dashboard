@@ -13,15 +13,19 @@ export const dynamic = "force-dynamic";
 export default async function ReservationPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; session?: string }>;
 }) {
   if (!(await getCurrentUser())) redirect("/login?next=/reservation/print");
 
-  const { date: dateParam } = await searchParams;
+  const { date: dateParam, session: sessionParam } = await searchParams;
   const today = toLocalDateString();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam ?? "")
     ? (dateParam as string)
     : today;
+  const initialSession: "all" | "morning" | "afternoon" =
+    sessionParam === "morning" || sessionParam === "afternoon"
+      ? sessionParam
+      : "all";
 
   const shopId = await getActiveShopId();
   const [reservations, formData, shopHours, shop] = await Promise.all([
@@ -41,6 +45,7 @@ export default async function ReservationPrintPage({
       formData={formData}
       shopHours={shopHours}
       shopName={shop?.name ?? ""}
+      initialSession={initialSession}
     />
   );
 }
