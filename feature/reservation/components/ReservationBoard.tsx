@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
@@ -60,7 +60,11 @@ export function ReservationBoard({
     | {
         kind: "block";
         mode: "create";
-        prefill?: { staffId?: number; startTime?: string };
+        prefill?: {
+          staffId?: number;
+          startTime?: string;
+          durationMin?: number;
+        };
       }
     | { kind: "block"; mode: "edit"; row: ReservationRow };
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -71,6 +75,23 @@ export function ReservationBoard({
         ? { kind: "block", mode: "edit", row: r }
         : { kind: "appointment", mode: "edit", row: r },
     );
+
+  // ドラッグで時間ブロックを作成する（PCのみ。スマホは「＋ 時間ブロック」ボタンを使用）
+  const dragRef = useRef<{
+    startClientX: number;
+    laneEl: HTMLElement;
+    staffId: number | null;
+    rowKey: string;
+    a: number; // 起点分（スナップ済み）
+    b: number; // 現在分（スナップ済み）
+    moved: boolean;
+  } | null>(null);
+  const [dragSel, setDragSel] = useState<{
+    rowKey: string;
+    startMin: number;
+    endMin: number;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
 
   // Live "now" in minutes (JST), refreshed every 30s — drives the time cursor.
   const [nowMin, setNowMin] = useState<number | null>(null);
@@ -278,7 +299,81 @@ export function ReservationBoard({
                 <div
                   className="relative flex-1 cursor-copy"
                   style={{ width: totalW }}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    // 「指名なし」行は対象スタッフが無いためドラッグ作成不可
+                    if (row.staffId == null) return;
+                    const laneEl = e.currentTarget as HTMLElement;
+                    const rect = laneEl.getBoundingClientRect();
+                    const x0 = e.clientX - rect.left;
+                    const raw0 = startMin + x0 / PX_PER_MIN;
+                    const a = Math.max(
+                      startMin,
+                      Math.min(endMin - 15, Math.round(raw0 / 15) * 15),
+                    );
+                    dragRef.current = {
+                      startClientX: e.clientX,
+                      laneEl,
+                      staffId: row.staffId,
+                      rowKey: row.key,
+                      a,
+                      b: a,
+                      moved: false,
+                    };
+                    const onMove = (ev: MouseEvent) => {
+                      const d = dragRef.current;
+                      if (!d) return;
+                      if (
+                        !d.moved &&
+                        Math.abs(ev.clientX - d.startClientX) < 5
+                      )
+                        return;
+                      d.moved = true;
+                      const r = d.laneEl.getBoundingClientRect();
+                      const x = ev.clientX - r.left;
+                      const rawT = startMin + x / PX_PER_MIN;
+                      const snappedT = Math.max(
+                        startMin,
+                        Math.min(endMin, Math.round(rawT / 15) * 15),
+                      );
+                      d.b = snappedT;
+                      setDragSel({
+                        rowKey: d.rowKey,
+                        startMin: Math.min(d.a, d.b),
+                        endMin: Math.max(d.a, d.b),
+                      });
+                    };
+                    const onUp = () => {
+                      document.removeEventListener("mousemove", onMove);
+                      document.removeEventListener("mouseup", onUp);
+                      const d = dragRef.current;
+                      dragRef.current = null;
+                      if (!d) return;
+                      if (d.moved) {
+                        const lo = Math.min(d.a, d.b);
+                        const hi = Math.max(d.a, d.b);
+                        const duration = Math.max(15, hi - lo);
+                        suppressClickRef.current = true;
+                        setModal({
+                          kind: "block",
+                          mode: "create",
+                          prefill: {
+                            staffId: d.staffId ?? undefined,
+                            startTime: minToTime(lo),
+                            durationMin: duration,
+                          },
+                        });
+                      }
+                      setDragSel(null);
+                    };
+                    document.addEventListener("mousemove", onMove);
+                    document.addEventListener("mouseup", onUp);
+                  }}
                   onClick={(e) => {
+                    if (suppressClickRef.current) {
+                      suppressClickRef.current = false;
+                      return;
+                    }
                     const rect = (
                       e.currentTarget as HTMLElement
                     ).getBoundingClientRect();
@@ -297,6 +392,25 @@ export function ReservationBoard({
                     });
                   }}
                 >
+                  {dragSel && dragSel.rowKey === row.key && (
+                    <div
+                      className="pointer-events-none absolute top-1 z-20 rounded-md border-2 border-accent/70 bg-accent/15"
+                      style={{
+                        left:
+                          (dragSel.startMin - startMin) * PX_PER_MIN,
+                        width: Math.max(
+                          15 * PX_PER_MIN,
+                          (dragSel.endMin - dragSel.startMin) * PX_PER_MIN,
+                        ),
+                        height: ROW_H - 8,
+                      }}
+                    >
+                      <span className="m-1 inline-block rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold leading-none text-accent-fg tabular-nums">
+                        {minToTime(dragSel.startMin)}–
+                        {minToTime(dragSel.endMin)}
+                      </span>
+                    </div>
+                  )}
                   {hours.map((m) => (
                     <div
                       key={m}
@@ -326,6 +440,7 @@ export function ReservationBoard({
                       return (
                         <button
                           key={r.id}
+                          onMouseDown={(ev) => ev.stopPropagation()}
                           onClick={(ev) => {
                             ev.stopPropagation();
                             openCardEdit(r);
@@ -356,6 +471,7 @@ export function ReservationBoard({
                     return (
                       <button
                         key={r.id}
+                        onMouseDown={(ev) => ev.stopPropagation()}
                         onClick={(ev) => {
                           ev.stopPropagation();
                           openCardEdit(r);
