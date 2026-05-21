@@ -26,7 +26,12 @@ type FormData = {
     price: number;
     menuManageId: string;
   }[];
-  customers: { id: number; name: string; phone: string | null }[];
+  customers: {
+    id: number;
+    name: string;
+    kana: string | null;
+    phone: string | null;
+  }[];
   visitSources: { id: number; name: string }[];
 };
 
@@ -311,18 +316,13 @@ export function AppointmentModal({
         {custMode === "existing" ? (
           <div>
             <Label>顧客</Label>
-            <Select
-              value={form.customerId}
-              onChange={(e) => set("customerId", e.target.value)}
-            >
-              <option value="">（顧客を選択）</option>
-              {formData.customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.phone ? `（${c.phone}）` : ""}
-                </option>
-              ))}
-            </Select>
+            <CustomerCombobox
+              customers={formData.customers}
+              selectedId={form.customerId === "" ? null : Number(form.customerId)}
+              onSelect={(c) =>
+                setForm((f) => ({ ...f, customerId: c ? c.id : "" }))
+              }
+            />
           </div>
         ) : (
           <>
@@ -540,6 +540,135 @@ function MenuCombobox({
                   <span className="shrink-0 tabular-nums text-xs text-faint">
                     {m.durationMin}分 / ¥{m.price.toLocaleString()}
                   </span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CustomerCombobox({
+  customers,
+  selectedId,
+  onSelect,
+}: {
+  customers: FormData["customers"];
+  selectedId: number | null;
+  onSelect: (c: FormData["customers"][number] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = useMemo(
+    () => customers.find((c) => c.id === selectedId) ?? null,
+    [customers, selectedId],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.kana ?? "").toLowerCase().includes(q) ||
+        (c.phone ?? "").toLowerCase().includes(q),
+    );
+  }, [customers, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const display = open
+    ? query
+    : selected
+      ? `${selected.name}${selected.phone ? `（${selected.phone}）` : ""}`
+      : "";
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        type="text"
+        value={display}
+        placeholder="氏名・カナ・電話で検索"
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => {
+          if (!open) setOpen(true);
+          setQuery(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Enter" && open && filtered[0]) {
+            e.preventDefault();
+            onSelect(filtered[0]);
+            setOpen(false);
+            setQuery("");
+          }
+        }}
+      />
+      {open && (
+        <ul className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-line bg-surface shadow-panel">
+          {selected && (
+            <li>
+              <button
+                type="button"
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => {
+                  onSelect(null);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className="w-full border-b border-line/60 px-3 py-2 text-left text-sm text-faint hover:bg-elevated"
+              >
+                選択を解除
+              </button>
+            </li>
+          )}
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-faint">
+              候補がありません（「顧客」画面から登録できます）
+            </li>
+          ) : (
+            filtered.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onMouseDown={(ev) => ev.preventDefault()}
+                  onClick={() => {
+                    onSelect(c);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-elevated ${selectedId === c.id ? "bg-elevated/60" : ""}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-ink">
+                      {c.name}
+                    </span>
+                    {c.kana && (
+                      <span className="block truncate text-[11px] text-faint">
+                        {c.kana}
+                      </span>
+                    )}
+                  </span>
+                  {c.phone && (
+                    <span className="shrink-0 tabular-nums text-xs text-faint">
+                      {c.phone}
+                    </span>
+                  )}
                 </button>
               </li>
             ))

@@ -25,8 +25,8 @@ export async function getReservationFormData(shopId: number) {
     }),
     db.customer.findMany({
       where: { shopId, deletedAt: null },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, phone: true },
+      orderBy: [{ kana: "asc" }, { name: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, kana: true, phone: true },
     }),
     db.visitSource.findMany({
       where: { shopId, deletedAt: null },
