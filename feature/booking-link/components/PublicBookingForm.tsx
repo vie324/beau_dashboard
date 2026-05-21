@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
@@ -57,6 +57,19 @@ export function PublicBookingForm({
   const [guest, setGuest] = useState({ name: "", phone: "", note: "" });
   const [submitting, startSubmit] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const guestSectionRef = useRef<HTMLDivElement>(null);
+  const guestNameRef = useRef<HTMLInputElement>(null);
+
+  // 希望日時を選んだら入力欄まで自動スクロール + 名前欄にフォーカス。
+  useEffect(() => {
+    if (!picked) return;
+    const el = guestSectionRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    const t = setTimeout(() => guestNameRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [picked]);
 
   const staffOptions = useMemo(
     () => data.staffsByShop[shopId] ?? [],
@@ -269,7 +282,10 @@ export function PublicBookingForm({
 
       {/* Guest details once a slot is chosen */}
       {picked && (
-        <div className="animate-fade-in space-y-4 rounded-xl border border-accent/40 bg-accent/5 p-4">
+        <div
+          ref={guestSectionRef}
+          className="animate-fade-in scroll-mt-4 space-y-4 rounded-xl border border-accent/40 bg-accent/5 p-4"
+        >
           <p className="text-sm font-medium text-ink">
             選択中：{picked.date.replace(/-/g, "/")}　{picked.time}〜
             <button
@@ -284,6 +300,7 @@ export function PublicBookingForm({
             <div>
               <Label>お名前</Label>
               <Input
+                ref={guestNameRef}
                 required
                 value={guest.name}
                 onChange={(e) =>
