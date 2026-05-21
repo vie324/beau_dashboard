@@ -40,6 +40,7 @@ export async function getSettingsData(brandId: number, shopId: number) {
         name: true,
         color: true,
         sortNumber: true,
+        capacity: true,
         isBookable: true,
       },
     }),

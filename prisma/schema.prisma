@@ -83,6 +83,9 @@ model Equipment {
   name         String
   color        String        @default("#a9803f")
   sortNumber   Int           @default(0)
+  // 同時に予約可能な台数。同種の機械が複数あるケース（水素吸引機 ×2 等）。
+  // 既存挙動は 1 = 同時1件まで。
+  capacity     Int           @default(1)
   isBookable   Boolean       @default(true)
   createdAt    DateTime      @default(now())
   deletedAt    DateTime?

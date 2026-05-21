@@ -302,6 +302,9 @@ export function SettingsClient({
               meta={
                 <span className="flex items-center gap-2 text-faint">
                   表示順 {e.sortNumber}
+                  <Badge className="border-line bg-base text-muted">
+                    {e.capacity}台
+                  </Badge>
                   {e.isBookable ? (
                     <Badge className="border-ok/30 bg-ok/15 text-ok">
                       予約可
@@ -1253,6 +1256,7 @@ function EquipmentForm({
     name: initial?.name ?? "",
     color: initial?.color ?? "#a9803f",
     sortNumber: initial?.sortNumber ?? 0,
+    capacity: initial?.capacity ?? 1,
     isBookable: initial?.isBookable ?? true,
   });
   const submit = () => {
@@ -1261,6 +1265,7 @@ function EquipmentForm({
     fd.set("name", f.name);
     fd.set("color", f.color);
     fd.set("sortNumber", String(f.sortNumber));
+    fd.set("capacity", String(f.capacity));
     fd.set("isBookable", f.isBookable ? "true" : "false");
     onSubmit(fd);
   };
@@ -1298,6 +1303,20 @@ function EquipmentForm({
             />
           </Field>
         </div>
+        <Field label="台数（同時に予約可能な台数）">
+          <Input
+            type="number"
+            min={1}
+            max={50}
+            value={f.capacity}
+            onChange={(e) =>
+              setF({ ...f, capacity: Math.max(1, Number(e.target.value) || 1) })
+            }
+          />
+          <p className="mt-1 text-[11px] text-faint">
+            同種の機械が複数ある場合に台数を設定します。予約管理ボードでは台数分の行に分かれて表示されます。
+          </p>
+        </Field>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"

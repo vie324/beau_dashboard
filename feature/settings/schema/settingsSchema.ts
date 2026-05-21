@@ -62,6 +62,12 @@ export const equipmentSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "色は #RRGGBB 形式で入力してください")
     .default("#a9803f"),
   sortNumber: z.coerce.number().int().min(0).max(9999).default(0),
+  capacity: z.coerce
+    .number()
+    .int()
+    .min(1, "台数は1以上で入力してください")
+    .max(50)
+    .default(1),
   isBookable: bool.default(true),
 });
 export type EquipmentInput = z.infer<typeof equipmentSchema>;

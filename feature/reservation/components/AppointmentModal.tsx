@@ -21,7 +21,12 @@ import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/
 
 type FormData = {
   staffs: { id: number; name: string; color?: string }[];
-  equipments: { id: number; name: string; color?: string }[];
+  equipments: {
+    id: number;
+    name: string;
+    color?: string;
+    capacity: number;
+  }[];
   menus: {
     id: number;
     name: string;
