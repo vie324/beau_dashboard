@@ -184,6 +184,8 @@ model BookingLink {
   description           String?
   isActive              Boolean       @default(true)
   requireStaffSelection Boolean       @default(false)
+  // Slot interval shown on the public booking calendar. 15 / 30 / 60 minutes.
+  intervalMin           Int           @default(30)
   // JSON (TEXT): array of allowed menu ids, e.g. "[1,2,3]"
   allowedMenuIds        String?
   // JSON (TEXT): reminder settings, e.g. {"enabled":true,"hoursBefore":24}

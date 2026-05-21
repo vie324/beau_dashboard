@@ -19,6 +19,13 @@ export const bookingLinkSchema = z.object({
   isActive: z.coerce.boolean().default(true),
   requireStaffSelection: z.coerce.boolean().default(false),
   allowedMenuIds: z.array(z.coerce.number().int().positive()).default([]),
+  intervalMin: z.coerce
+    .number()
+    .int()
+    .refine((v) => v === 15 || v === 30 || v === 60, {
+      message: "時間間隔は 15 / 30 / 60 分のいずれかを選んでください",
+    })
+    .default(30),
   reminderEnabled: z.coerce.boolean().default(false),
   reminderHoursBefore: z.coerce.number().int().min(1).max(168).default(24),
 });

@@ -33,6 +33,7 @@ export function BookingLinkForm({
     shopId: initial?.shopId ?? "",
     isActive: initial?.isActive ?? true,
     requireStaffSelection: initial?.requireStaffSelection ?? false,
+    intervalMin: initial?.intervalMin ?? 30,
     allowedMenuIds: initial?.allowedMenuIds ?? ([] as number[]),
     reminderEnabled: initial?.reminderEnabled ?? false,
     reminderHoursBefore: initial?.reminderHoursBefore ?? 24,
@@ -59,6 +60,7 @@ export function BookingLinkForm({
       shopId: form.shopId === "" ? undefined : Number(form.shopId),
       isActive: form.isActive,
       requireStaffSelection: form.requireStaffSelection,
+      intervalMin: form.intervalMin,
       allowedMenuIds: form.allowedMenuIds,
       reminderEnabled: form.reminderEnabled,
       reminderHoursBefore: form.reminderHoursBefore,
@@ -78,6 +80,7 @@ export function BookingLinkForm({
     if (form.shopId !== "") fd.set("shopId", String(form.shopId));
     fd.set("isActive", String(form.isActive));
     fd.set("requireStaffSelection", String(form.requireStaffSelection));
+    fd.set("intervalMin", String(form.intervalMin));
     fd.set("allowedMenuIds", JSON.stringify(form.allowedMenuIds));
     fd.set("reminderEnabled", String(form.reminderEnabled));
     fd.set("reminderHoursBefore", String(form.reminderHoursBefore));
@@ -171,6 +174,21 @@ export function BookingLinkForm({
           </div>
           <p className="mt-1 text-[11px] text-faint">
             未選択の場合は公開メニューすべてが予約可能になります
+          </p>
+        </div>
+
+        <div>
+          <Label>予約枠の時間間隔</Label>
+          <Select
+            value={form.intervalMin}
+            onChange={(e) => set("intervalMin", Number(e.target.value))}
+          >
+            <option value={15}>15分単位</option>
+            <option value={30}>30分単位</option>
+            <option value={60}>60分単位</option>
+          </Select>
+          <p className="mt-1 text-[11px] text-faint">
+            予約ページのカレンダーに表示する開始時刻の刻みです
           </p>
         </div>
 
