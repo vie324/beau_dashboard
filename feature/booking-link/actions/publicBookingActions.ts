@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { jstDateTimeToDate, addMinutes } from "@/helper/utils/time";
+import { resolveHoursForDate } from "@/helper/utils/shopHours";
 import { checkStaffAvailability } from "@/feature/reservation/actions/reservationActions";
 import { publicBookingSchema } from "@/feature/reservation/schema/reservationSchema";
 
@@ -72,6 +73,7 @@ export async function getPublicAvailability(input: {
       closeTime: true,
       breakStart: true,
       breakEnd: true,
+      hoursByDow: true,
     },
   });
   if (!shop) return { ok: false, error: "店舗の指定が正しくありません" };
@@ -88,11 +90,6 @@ export async function getPublicAvailability(input: {
     select: { id: true, durationMin: true },
   });
   if (!menu) return { ok: false, error: "メニューの指定が正しくありません" };
-
-  const openMin = hm(shop.openTime) ?? 9 * 60;
-  const closeMin = hm(shop.closeTime) ?? 21 * 60;
-  const bStart = hm(shop.breakStart);
-  const bEnd = hm(shop.breakEnd);
 
   const allStaff = await db.staff.findMany({
     where: { shopId: shop.id, deletedAt: null, isBookable: true },
@@ -123,21 +120,37 @@ export async function getPublicAvailability(input: {
     e: new Date(a.endAt).getTime(),
   }));
 
-  const now = Date.now();
-  const times: string[] = [];
-  // 開始時刻は閉店時刻まで許可（メニュー所要時間で終了が閉店を越えても可：サロン側で延長対応）
-  for (let m = openMin; m <= closeMin; m += interval) {
-    times.push(
-      `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
-        m % 60,
-      ).padStart(2, "0")}`,
-    );
-  }
+  // 各日の営業時間を曜日オーバーライド込みで解決し、開始時刻の和集合を作る。
+  const perDayHours = Array.from({ length: 7 }, (_, i) =>
+    resolveHoursForDate(shop, shiftYmd(input.weekStart, i)),
+  );
 
+  const timesSet = new Set<number>();
+  for (const h of perDayHours) {
+    if (h.isClosed) continue;
+    const o = hm(h.openTime) ?? 9 * 60;
+    const c = hm(h.closeTime) ?? 21 * 60;
+    for (let m = o; m <= c; m += interval) timesSet.add(m);
+  }
+  const sortedTimes = [...timesSet].sort((a, b) => a - b);
+  const times: string[] = sortedTimes.map(
+    (m) =>
+      `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(
+        2,
+        "0",
+      )}`,
+  );
+
+  const now = Date.now();
   const days: AvailabilityDay[] = [];
 
   for (let i = 0; i < 7; i++) {
     const date = shiftYmd(input.weekStart, i);
+    const dh = perDayHours[i];
+    const dayOpen = hm(dh.openTime) ?? 9 * 60;
+    const dayClose = hm(dh.closeTime) ?? 21 * 60;
+    const bStart = hm(dh.breakStart);
+    const bEnd = hm(dh.breakEnd);
     const [yy, mm, dd] = date.split("-").map(Number);
     const noon = new Date(Date.UTC(yy, mm - 1, dd, 3, 0, 0));
     const dow = new Intl.DateTimeFormat("ja-JP", {
@@ -151,6 +164,9 @@ export async function getPublicAvailability(input: {
       const slotStart = jstDateTimeToDate(date, t).getTime();
       const slotEnd = slotStart + menu.durationMin * 60000;
       let ok = slotStart >= now;
+      // 休業日は全枠 NG。営業日は曜日別の open〜close 範囲外も NG。
+      if (ok && dh.isClosed) ok = false;
+      if (ok && (tMin < dayOpen || tMin > dayClose)) ok = false;
       // 休憩は「開始が休憩の内側」のときのみ不可。境界（開始＝休憩開始 or 休憩終了）と
       // 終了側のはみ出しは許可。
       if (ok && bStart != null && bEnd != null) {

@@ -10,8 +10,18 @@ import {
   menuSchema,
   visitSourceSchema,
 } from "@/feature/settings/schema/settingsSchema";
+import {
+  parseHoursByDow,
+  serializeHoursByDow,
+} from "@/helper/utils/shopHours";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+
+/** Round-trip the JSON: drop unknown keys / invalid times before persisting. */
+function cleanHoursByDow(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return serializeHoursByDow(parseHoursByDow(raw));
+}
 
 function fail(msg: string): ActionResult {
   return { ok: false, error: msg };
@@ -62,6 +72,7 @@ export async function saveShop(
           closeTime: input.closeTime || null,
           breakStart: input.breakStart || null,
           breakEnd: input.breakEnd || null,
+          hoursByDow: cleanHoursByDow(input.hoursByDow),
         },
       });
     } else {
@@ -77,6 +88,7 @@ export async function saveShop(
           closeTime: input.closeTime || null,
           breakStart: input.breakStart || null,
           breakEnd: input.breakEnd || null,
+          hoursByDow: cleanHoursByDow(input.hoursByDow),
         },
       });
     }

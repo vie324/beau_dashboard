@@ -60,3 +60,10 @@ export function jstMinutesOfDay(d: Date): number {
   const [hh, mm] = t.split(":").map(Number);
   return hh * 60 + mm;
 }
+
+/** 0 = Sunday … 6 = Saturday, JST calendar day. */
+export function dayOfWeekFromYmd(dateStr: string): number {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  // Noon UTC is always the same calendar day in JST (UTC+9), regardless of DST.
+  return new Date(Date.UTC(y, m - 1, d, 3, 0, 0)).getUTCDay();
+}

@@ -7,6 +7,22 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Label, Select } from "@/components/ui/Input";
 import {
+  parseHoursByDow,
+  serializeHoursByDow,
+  type DowOverride,
+  type HoursByDow,
+} from "@/helper/utils/shopHours";
+
+const DOW_LABELS: { key: string; label: string }[] = [
+  { key: "1", label: "月" },
+  { key: "2", label: "火" },
+  { key: "3", label: "水" },
+  { key: "4", label: "木" },
+  { key: "5", label: "金" },
+  { key: "6", label: "土" },
+  { key: "0", label: "日" },
+];
+import {
   saveShop,
   deleteShop,
   saveStaff,
@@ -434,6 +450,7 @@ function ShopForm({
   onSubmit: (fd: FormData) => void;
   pending: boolean;
 }) {
+  const initialDow = parseHoursByDow(initial?.hoursByDow);
   const [f, setF] = useState({
     name: initial?.name ?? "",
     sortNumber: initial?.sortNumber ?? 0,
@@ -445,10 +462,42 @@ function ShopForm({
     breakStart: initial?.breakStart ?? "",
     breakEnd: initial?.breakEnd ?? "",
   });
+  const [useDow, setUseDow] = useState(Object.keys(initialDow).length > 0);
+  const [dow, setDow] = useState<HoursByDow>(initialDow);
+  const setDowField = (
+    key: string,
+    field: keyof DowOverride,
+    value: string | boolean,
+  ) =>
+    setDow((prev) => {
+      const next = { ...prev };
+      const cur: DowOverride = { ...(next[key] ?? {}) };
+      if (field === "closed") {
+        if (value) {
+          next[key] = { closed: true };
+        } else {
+          delete cur.closed;
+          if (Object.keys(cur).length === 0) delete next[key];
+          else next[key] = cur;
+        }
+        return next;
+      }
+      if (cur.closed) delete cur.closed;
+      const v = typeof value === "string" ? value.trim() : "";
+      if (v === "") {
+        delete cur[field];
+      } else {
+        (cur as Record<string, unknown>)[field] = v;
+      }
+      if (Object.keys(cur).length === 0) delete next[key];
+      else next[key] = cur;
+      return next;
+    });
   const submit = () => {
     const fd = new FormData();
     if (initial) fd.set("id", String(initial.id));
     Object.entries(f).forEach(([k, v]) => fd.set(k, String(v)));
+    fd.set("hoursByDow", useDow ? (serializeHoursByDow(dow) ?? "") : "");
     onSubmit(fd);
   };
   return (
@@ -527,6 +576,106 @@ function ShopForm({
               />
             </Field>
           </div>
+        </div>
+
+        <div className="rounded-xl border border-line bg-base/40 p-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={useDow}
+              onChange={(e) => setUseDow(e.target.checked)}
+              className="accent-accent"
+            />
+            曜日ごとに営業時間を設定する
+          </label>
+          {useDow && (
+            <div className="mt-3 space-y-2">
+              <p className="text-[11px] text-faint">
+                空欄の項目は上記のデフォルトを使用します。「休業」をチェックするとその曜日は予約不可になります。
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-xs">
+                  <thead>
+                    <tr className="text-left text-faint">
+                      <th className="px-1 py-1 font-medium">曜日</th>
+                      <th className="px-1 py-1 font-medium">休業</th>
+                      <th className="px-1 py-1 font-medium">開店</th>
+                      <th className="px-1 py-1 font-medium">閉店</th>
+                      <th className="px-1 py-1 font-medium">休憩開始</th>
+                      <th className="px-1 py-1 font-medium">休憩終了</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DOW_LABELS.map(({ key, label }) => {
+                      const row = dow[key] ?? {};
+                      const closed = row.closed === true;
+                      return (
+                        <tr key={key} className="border-t border-line/60">
+                          <td className="px-1 py-1.5 font-medium text-ink">
+                            {label}
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={closed}
+                              onChange={(e) =>
+                                setDowField(key, "closed", e.target.checked)
+                              }
+                              className="accent-accent"
+                            />
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Input
+                              type="time"
+                              value={row.openTime ?? ""}
+                              disabled={closed}
+                              onChange={(e) =>
+                                setDowField(key, "openTime", e.target.value)
+                              }
+                              className="h-8"
+                            />
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Input
+                              type="time"
+                              value={row.closeTime ?? ""}
+                              disabled={closed}
+                              onChange={(e) =>
+                                setDowField(key, "closeTime", e.target.value)
+                              }
+                              className="h-8"
+                            />
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Input
+                              type="time"
+                              value={row.breakStart ?? ""}
+                              disabled={closed}
+                              onChange={(e) =>
+                                setDowField(key, "breakStart", e.target.value)
+                              }
+                              className="h-8"
+                            />
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Input
+                              type="time"
+                              value={row.breakEnd ?? ""}
+                              disabled={closed}
+                              onChange={(e) =>
+                                setDowField(key, "breakEnd", e.target.value)
+                              }
+                              className="h-8"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
