@@ -112,15 +112,25 @@ model Staff {
 model Customer {
   id           Int           @id @default(autoincrement())
   shopId       Int
+  // 外部システムの患者番号/会員番号など。店舗内で一意（再取込の重複防止キー）。
+  code         String?
   name         String
   kana         String?
   phone        String?
   email        String?
+  postalCode   String?
+  address      String?
+  // 自由記述（"男性"/"女性" など、取込元の表記をそのまま保持）
+  gender       String?
+  // 生年月日（日付のみ。UTC 0:00 として保存）
+  birthday     DateTime?
   note         String?
   createdAt    DateTime      @default(now())
   deletedAt    DateTime?
   shop         Shop          @relation(fields: [shopId], references: [id])
   appointments Appointment[]
+
+  @@unique([shopId, code])
 }
 
 // ---- Hybrid tables (shopId nullable -> NULL means brand-common) ----
