@@ -93,7 +93,7 @@ export function AppointmentModal({
           new Date(initial.startAt).getTime()) /
           60000,
       )
-    : 60;
+    : 15;
 
   const [form, setForm] = useState({
     date: initial ? toDateStr(initial.startAt) : date,
