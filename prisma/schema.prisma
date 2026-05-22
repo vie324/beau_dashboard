@@ -98,6 +98,11 @@ model Staff {
   color         String        @default("#6f9bd8")
   allocateOrder Int           @default(0)
   isBookable    Boolean       @default(true)
+  // false = 常勤（毎日 営業時間どおり枠が出る）
+  // true  = 臨時/スポット（workDates に入れた日だけ枠が出る）
+  spotMode      Boolean       @default(false)
+  // JSON (TEXT): 出勤日 ["2026-05-26","2026-05-28"]（spotMode のときのみ使用）
+  workDates     String?
   createdAt     DateTime      @default(now())
   deletedAt     DateTime?
   shop          Shop          @relation(fields: [shopId], references: [id])

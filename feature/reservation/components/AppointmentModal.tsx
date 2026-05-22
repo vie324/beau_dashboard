@@ -20,7 +20,13 @@ import type { ReservationRow } from "@/feature/reservation/services/getReservati
 import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/optimistic";
 
 type FormData = {
-  staffs: { id: number; name: string; color?: string }[];
+  staffs: {
+    id: number;
+    name: string;
+    color?: string;
+    spotMode?: boolean;
+    workDates?: string | null;
+  }[];
   equipments: { id: number; name: string; color?: string }[];
   menus: {
     id: number;

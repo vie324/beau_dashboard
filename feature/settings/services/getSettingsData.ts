@@ -30,6 +30,8 @@ export async function getSettingsData(brandId: number, shopId: number) {
         color: true,
         allocateOrder: true,
         isBookable: true,
+        spotMode: true,
+        workDates: true,
       },
     }),
     db.equipment.findMany({

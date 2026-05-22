@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { toLocalDateString, formatJpDate } from "@/helper/utils/time";
+import { parseWorkDates, serializeWorkDates } from "@/helper/utils/staffWork";
 import {
   parseHoursByDow,
   serializeHoursByDow,
@@ -241,6 +242,11 @@ export function SettingsClient({
               meta={
                 <span className="flex items-center gap-2 text-faint">
                   割当優先順 {s.allocateOrder}
+                  {s.spotMode && (
+                    <Badge className="border-accent/30 bg-accent/10 text-accent-hover">
+                      臨時 {parseWorkDates(s.workDates).length}日
+                    </Badge>
+                  )}
                   {s.isBookable ? (
                     <Badge className="border-ok/30 bg-ok/15 text-ok">
                       予約可
@@ -1028,7 +1034,17 @@ function StaffForm({
     color: initial?.color ?? "#6f9bd8",
     allocateOrder: initial?.allocateOrder ?? 0,
     isBookable: initial?.isBookable ?? true,
+    spotMode: initial?.spotMode ?? false,
   });
+  const [workDates, setWorkDates] = useState<string[]>(
+    parseWorkDates(initial?.workDates),
+  );
+  const toggleWorkDate = (date: string) =>
+    setWorkDates((prev) =>
+      prev.includes(date)
+        ? prev.filter((d) => d !== date)
+        : [...prev, date].sort(),
+    );
   const submit = () => {
     const fd = new FormData();
     if (initial) fd.set("id", String(initial.id));
@@ -1036,6 +1052,11 @@ function StaffForm({
     fd.set("color", f.color);
     fd.set("allocateOrder", String(f.allocateOrder));
     fd.set("isBookable", f.isBookable ? "true" : "false");
+    fd.set("spotMode", f.spotMode ? "true" : "false");
+    fd.set(
+      "workDates",
+      f.spotMode ? (serializeWorkDates(workDates) ?? "") : "",
+    );
     onSubmit(fd);
   };
   return (
@@ -1081,9 +1102,129 @@ function StaffForm({
           />
           予約受付の対象にする
         </label>
+
+        <div className="rounded-xl border border-line bg-base/40 p-3">
+          <Field label="勤務形態">
+            <Select
+              value={f.spotMode ? "spot" : "regular"}
+              onChange={(e) =>
+                setF({ ...f, spotMode: e.target.value === "spot" })
+              }
+            >
+              <option value="regular">常勤（毎日 営業時間どおり）</option>
+              <option value="spot">臨時／スポット（出勤日のみ）</option>
+            </Select>
+          </Field>
+          {f.spotMode && (
+            <div className="mt-3">
+              <p className="mb-2 text-[11px] text-faint">
+                出勤日を選択してください。選んだ日だけ予約枠が表示されます（その他の日は予約不可・ブロック不要）。
+              </p>
+              <WorkDatesCalendar
+                workDates={workDates}
+                onToggle={toggleWorkDate}
+              />
+            </div>
+          )}
+        </div>
+
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
     </Modal>
+  );
+}
+
+function WorkDatesCalendar({
+  workDates,
+  onToggle,
+}: {
+  workDates: string[];
+  onToggle: (date: string) => void;
+}) {
+  const todayYmd = useMemo(() => toLocalDateString(), []);
+  const [calMonth, setCalMonth] = useState(todayYmd.slice(0, 7));
+  const rows = useMemo(() => buildMonthCells(calMonth), [calMonth]);
+  const workSet = useMemo(() => new Set(workDates), [workDates]);
+  const [y, m] = calMonth.split("-").map(Number);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setCalMonth(shiftMonth(calMonth, -1))}
+          className="rounded-lg border border-line px-3 py-1 text-xs text-muted hover:border-accent/60 hover:text-accent"
+        >
+          ‹ 前月
+        </button>
+        <span className="text-sm font-medium text-ink">
+          {y}年{m}月
+        </span>
+        <button
+          type="button"
+          onClick={() => setCalMonth(shiftMonth(calMonth, 1))}
+          className="rounded-lg border border-line px-3 py-1 text-xs text-muted hover:border-accent/60 hover:text-accent"
+        >
+          次月 ›
+        </button>
+      </div>
+
+      <table className="w-full border-collapse text-center text-xs">
+        <thead>
+          <tr className="text-faint">
+            {["日", "月", "火", "水", "木", "金", "土"].map((d, i) => (
+              <th
+                key={d}
+                className={`py-1 font-medium ${
+                  i === 0 ? "text-danger" : i === 6 ? "text-info" : ""
+                }`}
+              >
+                {d}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri}>
+              {row.map((cell, ci) => {
+                if (!cell)
+                  return <td key={ci} className="border border-line/40 p-0" />;
+                const on = workSet.has(cell);
+                const isToday = cell === todayYmd;
+                const dayNum = Number(cell.slice(8, 10));
+                return (
+                  <td key={ci} className="border border-line/40 p-0">
+                    <button
+                      type="button"
+                      onClick={() => onToggle(cell)}
+                      className={`flex h-9 w-full items-center justify-center text-xs transition-colors ${
+                        on
+                          ? "bg-accent font-semibold text-accent-fg"
+                          : "hover:bg-elevated/50"
+                      } ${
+                        !on && isToday ? "ring-1 ring-inset ring-accent/40" : ""
+                      } ${
+                        ci === 0
+                          ? "text-danger"
+                          : ci === 6
+                            ? "text-info"
+                            : ""
+                      }`}
+                    >
+                      {dayNum}
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[11px] text-faint">
+        選択中の出勤日: {workDates.length}日
+      </p>
+    </div>
   );
 }
 

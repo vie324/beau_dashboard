@@ -17,6 +17,13 @@ import {
   parseDateOverrides,
   serializeDateOverrides,
 } from "@/helper/utils/shopHours";
+import { parseWorkDates, serializeWorkDates } from "@/helper/utils/staffWork";
+
+/** Round-trip the work-dates JSON: drop invalid entries before persisting. */
+function cleanWorkDates(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return serializeWorkDates(parseWorkDates(raw));
+}
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -158,6 +165,8 @@ export async function saveStaff(
           color: input.color,
           allocateOrder: input.allocateOrder,
           isBookable: input.isBookable,
+          spotMode: input.spotMode,
+          workDates: input.spotMode ? cleanWorkDates(input.workDates) : null,
         },
       });
     } else {
@@ -168,6 +177,8 @@ export async function saveStaff(
           color: input.color,
           allocateOrder: input.allocateOrder,
           isBookable: input.isBookable,
+          spotMode: input.spotMode,
+          workDates: input.spotMode ? cleanWorkDates(input.workDates) : null,
         },
       });
     }
