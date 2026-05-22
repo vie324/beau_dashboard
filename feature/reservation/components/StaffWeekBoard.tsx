@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
+import { StatusQuickMenu } from "@/feature/reservation/components/StatusQuickMenu";
+import { setAppointmentStatus } from "@/feature/reservation/actions/reservationActions";
 import {
   jstMinutesOfDay,
   toLocalDateString,
@@ -116,6 +125,23 @@ export function StaffWeekBoard({
         ? { kind: "block", mode: "edit", row: r }
         : { kind: "appointment", mode: "edit", row: r },
     );
+
+  const [, startStatusTransition] = useTransition();
+  const [statusMenu, setStatusMenu] = useState<{
+    row: ReservationRow;
+    x: number;
+    y: number;
+  } | null>(null);
+  const openStatusMenu = (row: ReservationRow, rect: DOMRect) =>
+    setStatusMenu({ row, x: rect.left, y: rect.bottom + 4 });
+  const changeStatus = (row: ReservationRow, status: number) => {
+    if (status === row.status) return;
+    startStatusTransition(async () => {
+      applyOptimistic({ type: "update", row: { ...row, status } });
+      await setAppointmentStatus(row.id, status);
+      router.refresh();
+    });
+  };
 
   const [nowMin, setNowMin] = useState<number | null>(null);
   useEffect(() => {
@@ -476,6 +502,7 @@ export function StaffWeekBoard({
                     const cancelled = [3, 4, 99].includes(r.status);
                     const name =
                       r.customer?.name ?? r.guestName ?? "（名称未設定）";
+                    const note = r.customer?.note ?? null;
                     return (
                       <button
                         key={r.id}
@@ -484,7 +511,7 @@ export function StaffWeekBoard({
                           ev.stopPropagation();
                           openCardEdit(r);
                         }}
-                        title={`${minToTime(s)}–${minToTime(e)} ${name}`}
+                        title={`${minToTime(s)}–${minToTime(e)} ${name}${note ? `\nメモ: ${note}` : ""}`}
                         className={`absolute z-10 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition-colors hover:z-20 hover:border-accent/70 ${
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
@@ -505,15 +532,40 @@ export function StaffWeekBoard({
                             {minToTime(s)}
                           </span>
                           {height > 34 && (
-                            <Badge
-                              className={`${meta.className} shrink-0 whitespace-nowrap`}
+                            <span
+                              role="button"
+                              tabIndex={-1}
+                              onMouseDown={(ev) => ev.stopPropagation()}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                openStatusMenu(
+                                  r,
+                                  (
+                                    ev.currentTarget as HTMLElement
+                                  ).getBoundingClientRect(),
+                                );
+                              }}
+                              title="クリックでステータス変更"
+                              className="shrink-0 cursor-pointer"
                             >
-                              {meta.label}
-                            </Badge>
+                              <Badge
+                                className={`${meta.className} whitespace-nowrap`}
+                              >
+                                {meta.label}
+                              </Badge>
+                            </span>
                           )}
                         </div>
-                        <div className="truncate font-medium text-ink">
-                          {name}
+                        <div className="flex min-w-0 items-center gap-1">
+                          {note && (
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+                              title={note}
+                            />
+                          )}
+                          <span className="truncate font-medium text-ink">
+                            {name}
+                          </span>
                         </div>
                         {r.menu && height > 48 && (
                           <div className="truncate text-faint">
@@ -585,6 +637,7 @@ export function StaffWeekBoard({
                     const name = isBlock
                       ? (r.blockLabel ?? "時間ブロック")
                       : (r.customer?.name ?? r.guestName ?? "（名称未設定）");
+                    const note = isBlock ? null : (r.customer?.note ?? null);
                     const meta = statusMeta(r.status);
                     return (
                       <li key={r.id}>
@@ -597,15 +650,39 @@ export function StaffWeekBoard({
                           <span className="w-20 shrink-0 text-xs font-semibold tabular-nums text-ink">
                             {minToTime(s)}–{minToTime(e)}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                            {name}
+                          <span className="flex min-w-0 flex-1 items-center gap-1">
+                            {note && (
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-warn"
+                                title={note}
+                              />
+                            )}
+                            <span className="truncate text-sm text-ink">
+                              {name}
+                            </span>
                           </span>
                           {!isBlock && (
-                            <Badge
-                              className={`${meta.className} shrink-0 whitespace-nowrap`}
+                            <span
+                              role="button"
+                              tabIndex={-1}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                openStatusMenu(
+                                  r,
+                                  (
+                                    ev.currentTarget as HTMLElement
+                                  ).getBoundingClientRect(),
+                                );
+                              }}
+                              className="shrink-0 cursor-pointer"
+                              title="タップでステータス変更"
                             >
-                              {meta.label}
-                            </Badge>
+                              <Badge
+                                className={`${meta.className} whitespace-nowrap`}
+                              >
+                                {meta.label}
+                              </Badge>
+                            </span>
                           )}
                         </button>
                       </li>
@@ -648,6 +725,15 @@ export function StaffWeekBoard({
           initial={modal.mode === "edit" ? modal.row : null}
           prefill={modal.mode === "create" ? modal.prefill : undefined}
           onOptimistic={applyOptimistic}
+        />
+      )}
+
+      {statusMenu && (
+        <StatusQuickMenu
+          anchor={{ x: statusMenu.x, y: statusMenu.y }}
+          current={statusMenu.row.status}
+          onPick={(status) => changeStatus(statusMenu.row, status)}
+          onClose={() => setStatusMenu(null)}
         />
       )}
     </>

@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
@@ -12,6 +20,8 @@ import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
 import { DayCalendar } from "@/feature/reservation/components/DayCalendar";
+import { StatusQuickMenu } from "@/feature/reservation/components/StatusQuickMenu";
+import { setAppointmentStatus } from "@/feature/reservation/actions/reservationActions";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import type { ReservationOptimisticAction } from "@/feature/reservation/types/optimistic";
@@ -107,6 +117,24 @@ export function ReservationBoard({
         ? { kind: "block", mode: "edit", row: r }
         : { kind: "appointment", mode: "edit", row: r },
     );
+
+  const router = useRouter();
+  const [, startStatusTransition] = useTransition();
+  const [statusMenu, setStatusMenu] = useState<{
+    row: ReservationRow;
+    x: number;
+    y: number;
+  } | null>(null);
+  const openStatusMenu = (row: ReservationRow, rect: DOMRect) =>
+    setStatusMenu({ row, x: rect.left, y: rect.bottom + 4 });
+  const changeStatus = (row: ReservationRow, status: number) => {
+    if (status === row.status) return;
+    startStatusTransition(async () => {
+      applyOptimistic({ type: "update", row: { ...row, status } });
+      await setAppointmentStatus(row.id, status);
+      router.refresh();
+    });
+  };
 
   // ドラッグで時間ブロックを作成する（PCのみ。スマホは「＋ 時間ブロック」ボタンを使用）
   const dragRef = useRef<{
@@ -329,6 +357,7 @@ export function ReservationBoard({
           breakBand={breakBand}
           nowMin={nowMin}
           onCardClick={openCardEdit}
+          onStatusClick={openStatusMenu}
           onEmptyClick={(staffId, startTime) =>
             setModal({
               kind: "appointment",
@@ -642,6 +671,7 @@ export function ReservationBoard({
                     const cancelled = [3, 4, 99].includes(r.status);
                     const name =
                       r.customer?.name ?? r.guestName ?? "（名称未設定）";
+                    const note = r.customer?.note ?? null;
                     return (
                       <button
                         key={r.id}
@@ -650,7 +680,7 @@ export function ReservationBoard({
                           ev.stopPropagation();
                           openCardEdit(r);
                         }}
-                        title={`${minToTime(s)}–${minToTime(e)} ${name}`}
+                        title={`${minToTime(s)}–${minToTime(e)} ${name}${note ? `\nメモ: ${note}` : ""}`}
                         className={`absolute z-10 flex flex-col overflow-hidden rounded-lg border px-2 py-1 text-left text-[11px] shadow-sm transition-all hover:z-20 hover:border-accent/70 hover:shadow-md ${
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
@@ -670,15 +700,45 @@ export function ReservationBoard({
                           <span className="truncate font-semibold tabular-nums text-ink">
                             {minToTime(s)}
                           </span>
-                          <Badge
-                            className={`${meta.className} shrink-0 whitespace-nowrap`}
+                          <span
+                            role="button"
+                            tabIndex={-1}
+                            onMouseDown={(ev) => ev.stopPropagation()}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              openStatusMenu(
+                                r,
+                                (
+                                  ev.currentTarget as HTMLElement
+                                ).getBoundingClientRect(),
+                              );
+                            }}
+                            title="クリックでステータス変更"
+                            className="shrink-0 cursor-pointer"
                           >
-                            {meta.label}
-                          </Badge>
+                            <Badge
+                              className={`${meta.className} whitespace-nowrap`}
+                            >
+                              {meta.label}
+                            </Badge>
+                          </span>
                         </div>
-                        <div className="truncate font-medium text-ink">
-                          {name}
+                        <div className="flex min-w-0 items-center gap-1">
+                          {note && (
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+                              title={note}
+                            />
+                          )}
+                          <span className="truncate font-medium text-ink">
+                            {name}
+                          </span>
                         </div>
+                        {note && (
+                          <div className="truncate text-warn" title={note}>
+                            {note}
+                          </div>
+                        )}
                         {r.menu && (
                           <div className="truncate text-faint">
                             {r.menu.name}
@@ -749,6 +809,7 @@ export function ReservationBoard({
               const cancelled = [3, 4, 99].includes(r.status);
               const name =
                 r.customer?.name ?? r.guestName ?? "（名称未設定）";
+              const note = r.customer?.note ?? null;
               return (
                 <li key={r.id}>
                   <button
@@ -774,6 +835,12 @@ export function ReservationBoard({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
+                        {note && (
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full bg-warn"
+                            title={note}
+                          />
+                        )}
                         <span className="truncate font-medium text-ink">
                           {name}
                         </span>
@@ -783,6 +850,11 @@ export function ReservationBoard({
                           </span>
                         )}
                       </div>
+                      {note && (
+                        <div className="mt-0.5 truncate text-xs text-warn">
+                          メモ：{note}
+                        </div>
+                      )}
                       {r.menu && (
                         <div className="mt-0.5 truncate text-xs text-faint">
                           {r.menu.name}
@@ -800,11 +872,25 @@ export function ReservationBoard({
                         </span>
                       </div>
                     </div>
-                    <Badge
-                      className={`${meta.className} shrink-0 self-start whitespace-nowrap`}
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        openStatusMenu(
+                          r,
+                          (ev.currentTarget as HTMLElement).getBoundingClientRect(),
+                        );
+                      }}
+                      className="shrink-0 cursor-pointer self-start"
+                      title="タップでステータス変更"
                     >
-                      {meta.label}
-                    </Badge>
+                      <Badge
+                        className={`${meta.className} whitespace-nowrap`}
+                      >
+                        {meta.label}
+                      </Badge>
+                    </span>
                   </button>
                 </li>
               );
@@ -849,6 +935,15 @@ export function ReservationBoard({
           initial={modal.mode === "edit" ? modal.row : null}
           prefill={modal.mode === "create" ? modal.prefill : undefined}
           onOptimistic={applyOptimistic}
+        />
+      )}
+
+      {statusMenu && (
+        <StatusQuickMenu
+          anchor={{ x: statusMenu.x, y: statusMenu.y }}
+          current={statusMenu.row.status}
+          onPick={(status) => changeStatus(statusMenu.row, status)}
+          onClose={() => setStatusMenu(null)}
         />
       )}
     </>
