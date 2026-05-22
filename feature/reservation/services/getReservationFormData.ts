@@ -6,7 +6,13 @@ export async function getReservationFormData(shopId: number) {
     db.staff.findMany({
       where: { shopId, deletedAt: null, isBookable: true },
       orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
-      select: { id: true, name: true, color: true },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        spotMode: true,
+        workDates: true,
+      },
     }),
     db.equipment.findMany({
       where: { shopId, deletedAt: null, isBookable: true },

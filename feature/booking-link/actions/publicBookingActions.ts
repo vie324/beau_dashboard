@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { jstDateTimeToDate, addMinutes } from "@/helper/utils/time";
 import { resolveHoursForDate } from "@/helper/utils/shopHours";
+import { staffWorksOn } from "@/helper/utils/staffWork";
 import {
   checkStaffAvailability,
   checkEquipmentAvailability,
@@ -102,12 +103,18 @@ export async function getPublicAvailability(input: {
 
   const allStaff = await db.staff.findMany({
     where: { shopId: shop.id, deletedAt: null, isBookable: true },
-    select: { id: true },
+    select: { id: true, spotMode: true, workDates: true },
   });
-  let candidates = allStaff.map((s) => s.id);
-  if (link.requireStaffSelection && input.staffId) {
-    candidates = candidates.filter((id) => id === input.staffId);
-  }
+  // その日に出勤しているスタッフだけを候補にする（臨時スタッフは出勤日のみ）。
+  const candidatesForDate = (dateStr: string): number[] => {
+    let ids = allStaff
+      .filter((s) => staffWorksOn(s, dateStr))
+      .map((s) => s.id);
+    if (link.requireStaffSelection && input.staffId) {
+      ids = ids.filter((id) => id === input.staffId);
+    }
+    return ids;
+  };
 
   // メニューが設備を要求するなら、その設備が予約可能でなければ枠なし。
   if (menu.equipmentId) {
@@ -177,6 +184,7 @@ export async function getPublicAvailability(input: {
     const dayClose = hm(dh.closeTime) ?? 21 * 60;
     const bStart = hm(dh.breakStart);
     const bEnd = hm(dh.breakEnd);
+    const candidates = candidatesForDate(date);
     const [yy, mm, dd] = date.split("-").map(Number);
     const noon = new Date(Date.UTC(yy, mm - 1, dd, 3, 0, 0));
     const dow = new Intl.DateTimeFormat("ja-JP", {
@@ -372,17 +380,22 @@ export async function submitPublicBooking(
     if (input.staffId) {
       const staff = await db.staff.findFirst({
         where: { id: input.staffId, shopId: shop.id, deletedAt: null },
-        select: { id: true },
+        select: { id: true, spotMode: true, workDates: true },
       });
       if (!staff)
         return { ok: false, error: "スタッフの指定が正しくありません" };
+      if (!staffWorksOn(staff, input.date)) {
+        return {
+          ok: false,
+          error: "選択したスタッフはこの日は予約を受け付けていません",
+        };
+      }
 
       const avail = await checkStaffAvailability({
         shopId: shop.id,
         staffId: input.staffId,
         startAt,
         endAt,
-        
       });
       if (!avail.available) {
         return {
@@ -394,11 +407,14 @@ export async function submitPublicBooking(
       assignedStaffId = input.staffId;
     } else {
       // 指名なし: 設定の割当優先順（allocateOrder 昇順）で空きスタッフへ自動割当。
-      const staffs = await db.staff.findMany({
-        where: { shopId: shop.id, deletedAt: null, isBookable: true },
-        orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
-        select: { id: true },
-      });
+      // 臨時スタッフは出勤日のみ対象。
+      const staffs = (
+        await db.staff.findMany({
+          where: { shopId: shop.id, deletedAt: null, isBookable: true },
+          orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
+          select: { id: true, spotMode: true, workDates: true },
+        })
+      ).filter((s) => staffWorksOn(s, input.date));
       if (staffs.length) {
         for (const s of staffs) {
           const a = await checkStaffAvailability({
@@ -406,7 +422,6 @@ export async function submitPublicBooking(
             staffId: s.id,
             startAt,
             endAt,
-            
           });
           if (a.available) {
             assignedStaffId = s.id;

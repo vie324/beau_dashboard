@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
+import { staffWorksOn } from "@/helper/utils/staffWork";
 import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
@@ -131,13 +132,21 @@ export function ReservationBoard({
   }, []);
 
   const rows = useMemo(() => {
+    // 臨時スタッフは「出勤日」または「その日に既存予約がある日」だけ列を出す。
+    const visibleStaffs = formData.staffs.filter((s) => {
+      if (!staffWorksOn(s, date)) {
+        const hasAppt = reservations.some((x) => x.staffId === s.id);
+        if (!hasAppt) return false;
+      }
+      return true;
+    });
     const r: {
       key: string;
       staffId: number | null;
       equipmentId: number | null;
       name: string;
       color: string | undefined;
-    }[] = formData.staffs.map((s) => ({
+    }[] = visibleStaffs.map((s) => ({
       key: `staff-${s.id}`,
       staffId: s.id,
       equipmentId: null,
@@ -166,7 +175,7 @@ export function ReservationBoard({
       });
     }
     return r;
-  }, [formData.staffs, formData.equipments, reservations]);
+  }, [formData.staffs, formData.equipments, reservations, date]);
 
   const { startMin, endMin } = useMemo(() => {
     let start = parseHm(shopHours?.openTime) ?? BASE_START;

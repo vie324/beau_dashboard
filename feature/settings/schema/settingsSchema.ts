@@ -50,6 +50,9 @@ export const staffSchema = z.object({
     .default("#6f9bd8"),
   allocateOrder: z.coerce.number().int().min(0).max(9999).default(0),
   isBookable: bool.default(true),
+  spotMode: bool.default(false),
+  // JSON string of work dates; structure validated in the action.
+  workDates: z.string().optional().nullable(),
 });
 export type StaffInput = z.infer<typeof staffSchema>;
 
