@@ -12,7 +12,9 @@ import {
   type AppointmentInput,
 } from "@/feature/reservation/schema/reservationSchema";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult =
+  | { ok: true }
+  | { ok: false; error: string; conflict?: "staff" | "equipment" };
 
 /**
  * True when the staff member has no overlapping appointment in the window.
@@ -123,7 +125,11 @@ async function upsert(
     equipmentId = menu?.equipmentId ?? null;
   }
 
-  if (input.staffId) {
+  // allowOverlap="1" のときは重複を許可（手動でのダブルブッキング）。
+  // ネット予約は submitPublicBooking 側の判定を通るため、ここは手動登録専用。
+  const allowOverlap = input.allowOverlap === "1";
+
+  if (input.staffId && !allowOverlap) {
     const avail = await checkStaffAvailability({
       shopId,
       staffId: input.staffId,
@@ -135,11 +141,12 @@ async function upsert(
       return {
         ok: false,
         error: "選択したスタッフはこの時間帯に別の予約があります",
+        conflict: "staff",
       };
     }
   }
 
-  if (equipmentId) {
+  if (equipmentId && !allowOverlap) {
     const avail = await checkEquipmentAvailability({
       shopId,
       equipmentId,
@@ -151,6 +158,7 @@ async function upsert(
       return {
         ok: false,
         error: "この時間帯は対象の設備が他の予約で埋まっています",
+        conflict: "equipment",
       };
     }
   }

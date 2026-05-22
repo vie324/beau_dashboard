@@ -22,6 +22,8 @@ export const appointmentSchema = z
     status: z.coerce.number().int().default(0),
     sales: z.coerce.number().int().min(0).optional().nullable(),
     note: z.string().trim().max(1000).optional().nullable(),
+    // "1" = スタッフ/設備の重複チェックを無視してダブルブッキングを許可（手動登録のみ）。
+    allowOverlap: z.literal("1").optional(),
   })
   .refine((v) => v.customerId != null || (v.guestName ?? "").length > 0, {
     message: "顧客を選択するか、来店者名を入力してください",

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
 import { staffWorksOn } from "@/helper/utils/staffWork";
+import { assignLanes } from "@/helper/utils/laneLayout";
 import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
@@ -497,9 +498,28 @@ export function ReservationBoard({
                     />
                   ))}
 
-                  {byRow(row).map((r) => {
+                  {(() => {
+                  const rowItems = byRow(row);
+                  const laneMap = assignLanes(
+                    rowItems.map((r) => ({
+                      id: r.id,
+                      start: jstMinutes(r.startAt),
+                      end: Math.max(
+                        jstMinutes(r.endAt),
+                        jstMinutes(r.startAt) + 15,
+                      ),
+                    })),
+                  );
+                  const INNER_TOP = 6;
+                  const AVAIL = ROW_H - 12;
+                  const LANE_GAP = 2;
+                  return rowItems.map((r) => {
                     const s = jstMinutes(r.startAt);
                     const e = jstMinutes(r.endAt);
+                    const lay = laneMap.get(r.id) ?? { lane: 0, lanes: 1 };
+                    const laneH =
+                      (AVAIL - (lay.lanes - 1) * LANE_GAP) / lay.lanes;
+                    const cardTop = INNER_TOP + lay.lane * (laneH + LANE_GAP);
                     const rawLeft = (s - startMin) * PX_PER_MIN;
                     const left = Math.min(
                       Math.max(0, rawLeft),
@@ -524,11 +544,12 @@ export function ReservationBoard({
                             openCardEdit(r);
                           }}
                           title={`${minToTime(s)}–${minToTime(e)} ${label}`}
-                          className="absolute top-1.5 z-10 flex flex-col overflow-hidden rounded-lg border border-line px-2 py-1 text-left text-[11px] text-muted transition-all hover:z-20 hover:border-accent/70 hover:shadow-md"
+                          className="absolute z-10 flex flex-col overflow-hidden rounded-lg border border-line px-2 py-1 text-left text-[11px] text-muted transition-all hover:z-20 hover:border-accent/70 hover:shadow-md"
                           style={{
                             left,
                             width,
-                            height: ROW_H - 12,
+                            top: cardTop,
+                            height: laneH,
                             background:
                               "repeating-linear-gradient(45deg, rgba(155,144,121,0.22) 0 6px, rgba(155,144,121,0.08) 6px 12px)",
                           }}
@@ -555,7 +576,7 @@ export function ReservationBoard({
                           openCardEdit(r);
                         }}
                         title={`${minToTime(s)}–${minToTime(e)} ${name}`}
-                        className={`absolute top-1.5 z-10 flex flex-col overflow-hidden rounded-lg border px-2 py-1 text-left text-[11px] shadow-sm transition-all hover:z-20 hover:border-accent/70 hover:shadow-md ${
+                        className={`absolute z-10 flex flex-col overflow-hidden rounded-lg border px-2 py-1 text-left text-[11px] shadow-sm transition-all hover:z-20 hover:border-accent/70 hover:shadow-md ${
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
                             : "border-line bg-elevated"
@@ -563,7 +584,8 @@ export function ReservationBoard({
                         style={{
                           left,
                           width,
-                          height: ROW_H - 12,
+                          top: cardTop,
+                          height: laneH,
                           borderLeftWidth: 3,
                           borderLeftColor:
                             r.visitSource?.labelTextColor ?? "#d8b06a",
@@ -594,7 +616,8 @@ export function ReservationBoard({
                         )}
                       </button>
                     );
-                  })}
+                  });
+                  })()}
                 </div>
               </div>
             ))}
