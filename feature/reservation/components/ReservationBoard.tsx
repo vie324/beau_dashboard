@@ -335,6 +335,13 @@ export function ReservationBoard({
               prefill: { staffId: staffId ?? undefined, startTime },
             })
           }
+          onDragCreate={(staffId, startTime, durationMin) =>
+            setModal({
+              kind: "block",
+              mode: "create",
+              prefill: { staffId: staffId ?? undefined, startTime, durationMin },
+            })
+          }
         />
       )}
 

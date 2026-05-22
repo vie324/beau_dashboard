@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
@@ -7,7 +8,7 @@ import { assignLanes } from "@/helper/utils/laneLayout";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 
 const PX_PER_MIN = 1; // 縦軸の高さ（1分=1px → 1時間=60px）
-const COL_W = 150; // 列（スタッフ/設備）の幅
+const MIN_COL_W = 150; // 列（スタッフ/設備）の最小幅。列が少なければ幅いっぱいに広がる。
 const GUTTER_W = 56; // 左の時刻目盛り幅
 const HEAD_H = 36;
 
@@ -32,7 +33,9 @@ function minToTime(min: number): string {
 /**
  * Google カレンダー風の縦タイムライン表示。
  * 縦軸=時間、横軸=スタッフ/設備の列。重なる予約は列内でレーン分割して横並び。
- * カードのクリックで編集、空き部分のクリックで新規作成。
+ * - カードのクリックで編集
+ * - 空き部分のクリックで新規予約
+ * - 空き部分を縦にドラッグ（引き伸ばし）で時間ブロックを作成
  */
 export function DayCalendar({
   date,
@@ -45,6 +48,7 @@ export function DayCalendar({
   nowMin,
   onCardClick,
   onEmptyClick,
+  onDragCreate,
 }: {
   date: string;
   today: string;
@@ -56,6 +60,11 @@ export function DayCalendar({
   nowMin: number | null;
   onCardClick: (r: ReservationRow) => void;
   onEmptyClick: (staffId: number | null, startTime: string) => void;
+  onDragCreate: (
+    staffId: number | null,
+    startTime: string,
+    durationMin: number,
+  ) => void;
 }) {
   const totalH = (endMin - startMin) * PX_PER_MIN;
 
@@ -64,6 +73,23 @@ export function DayCalendar({
 
   const showNow =
     date === today && nowMin != null && nowMin >= startMin && nowMin <= endMin;
+
+  // 縦ドラッグで時間ブロックを作成（PCのみ）。横タイムラインと同じ操作感。
+  const dragRef = useRef<{
+    startClientY: number;
+    colEl: HTMLElement;
+    staffId: number | null;
+    colKey: string;
+    a: number;
+    b: number;
+    moved: boolean;
+  } | null>(null);
+  const [dragSel, setDragSel] = useState<{
+    colKey: string;
+    startMin: number;
+    endMin: number;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
 
   const byCol = (c: Col) =>
     reservations.filter((r) => {
@@ -78,7 +104,7 @@ export function DayCalendar({
       className="hidden overflow-auto rounded-xl border border-line bg-surface shadow-panel sm:block"
       style={{ maxHeight: "72vh" }}
     >
-      <div style={{ width: GUTTER_W + cols.length * COL_W, minWidth: "100%" }}>
+      <div style={{ minWidth: GUTTER_W + cols.length * MIN_COL_W }}>
         {/* Header: column names */}
         <div
           className="sticky top-0 z-30 flex border-b border-line bg-surface"
@@ -91,8 +117,8 @@ export function DayCalendar({
           {cols.map((c) => (
             <div
               key={c.key}
-              className="flex shrink-0 items-center gap-1.5 border-r border-line px-2 text-xs font-medium text-ink"
-              style={{ width: COL_W }}
+              className="flex flex-1 items-center gap-1.5 border-r border-line px-2 text-xs font-medium text-ink last:border-r-0"
+              style={{ minWidth: MIN_COL_W }}
             >
               {c.color && (
                 <span
@@ -136,9 +162,75 @@ export function DayCalendar({
             return (
               <div
                 key={col.key}
-                className="relative shrink-0 cursor-copy border-r border-line last:border-r-0"
-                style={{ width: COL_W, height: totalH }}
+                className="relative flex-1 cursor-copy border-r border-line last:border-r-0"
+                style={{ minWidth: MIN_COL_W, height: totalH }}
+                onMouseDown={(e) => {
+                  if (e.button !== 0) return;
+                  // 設備列・「指名なし」列は対象スタッフが無いためドラッグ作成不可。
+                  if (col.staffId == null) return;
+                  const colEl = e.currentTarget as HTMLElement;
+                  const rect = colEl.getBoundingClientRect();
+                  const y0 = e.clientY - rect.top;
+                  const raw0 = startMin + y0 / PX_PER_MIN;
+                  const a = Math.max(
+                    startMin,
+                    Math.min(endMin - 15, Math.round(raw0 / 15) * 15),
+                  );
+                  dragRef.current = {
+                    startClientY: e.clientY,
+                    colEl,
+                    staffId: col.staffId,
+                    colKey: col.key,
+                    a,
+                    b: a,
+                    moved: false,
+                  };
+                  const onMove = (ev: MouseEvent) => {
+                    const d = dragRef.current;
+                    if (!d) return;
+                    if (
+                      !d.moved &&
+                      Math.abs(ev.clientY - d.startClientY) < 5
+                    )
+                      return;
+                    d.moved = true;
+                    const r = d.colEl.getBoundingClientRect();
+                    const y = ev.clientY - r.top;
+                    const rawT = startMin + y / PX_PER_MIN;
+                    const snappedT = Math.max(
+                      startMin,
+                      Math.min(endMin, Math.round(rawT / 15) * 15),
+                    );
+                    d.b = snappedT;
+                    setDragSel({
+                      colKey: d.colKey,
+                      startMin: Math.min(d.a, d.b),
+                      endMin: Math.max(d.a, d.b),
+                    });
+                  };
+                  const onUp = () => {
+                    document.removeEventListener("mousemove", onMove);
+                    document.removeEventListener("mouseup", onUp);
+                    const d = dragRef.current;
+                    dragRef.current = null;
+                    if (!d) return;
+                    if (d.moved) {
+                      const lo = Math.min(d.a, d.b);
+                      const hi = Math.max(d.a, d.b);
+                      const duration = Math.max(15, hi - lo);
+                      suppressClickRef.current = true;
+                      onDragCreate(d.staffId, minToTime(lo), duration);
+                    }
+                    setDragSel(null);
+                  };
+                  document.addEventListener("mousemove", onMove);
+                  document.addEventListener("mouseup", onUp);
+                }}
                 onClick={(e) => {
+                  if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                  }
                   const rect = (
                     e.currentTarget as HTMLElement
                   ).getBoundingClientRect();
@@ -186,6 +278,24 @@ export function DayCalendar({
                   />
                 )}
 
+                {/* Drag-to-create selection */}
+                {dragSel && dragSel.colKey === col.key && (
+                  <div
+                    className="pointer-events-none absolute inset-x-1 z-20 rounded-md border-2 border-accent/70 bg-accent/15"
+                    style={{
+                      top: (dragSel.startMin - startMin) * PX_PER_MIN,
+                      height: Math.max(
+                        15 * PX_PER_MIN,
+                        (dragSel.endMin - dragSel.startMin) * PX_PER_MIN,
+                      ),
+                    }}
+                  >
+                    <span className="m-1 inline-block rounded bg-accent px-1 py-0.5 text-[10px] font-semibold leading-none text-accent-fg tabular-nums">
+                      {minToTime(dragSel.startMin)}–{minToTime(dragSel.endMin)}
+                    </span>
+                  </div>
+                )}
+
                 {/* Cards */}
                 {items.map((r) => {
                   const s = jstMinutes(r.startAt);
@@ -204,6 +314,7 @@ export function DayCalendar({
                     return (
                       <button
                         key={r.id}
+                        onMouseDown={(ev) => ev.stopPropagation()}
                         onClick={(ev) => {
                           ev.stopPropagation();
                           onCardClick(r);
@@ -238,6 +349,7 @@ export function DayCalendar({
                   return (
                     <button
                       key={r.id}
+                      onMouseDown={(ev) => ev.stopPropagation()}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         onCardClick(r);
