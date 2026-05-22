@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/helper/utils/cn";
 
 const LINKS = [
+  { href: "/today", label: "今日" },
   { href: "/reservation", label: "予約管理" },
   { href: "/customers", label: "顧客" },
   { href: "/booking-links", label: "予約リンク" },
