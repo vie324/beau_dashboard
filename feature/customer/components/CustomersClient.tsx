@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { CustomerForm } from "@/feature/customer/components/CustomerForm";
+import { CustomerImportModal } from "@/feature/customer/components/CustomerImportModal";
 import { deleteCustomer } from "@/feature/customer/actions/customerActions";
 import type { CustomerRow } from "@/feature/customer/services/getCustomers";
 
@@ -15,11 +16,20 @@ const dateFmt = new Intl.DateTimeFormat("ja-JP", {
   day: "2-digit",
 });
 
-export function CustomersClient({ customers }: { customers: CustomerRow[] }) {
+export function CustomersClient({
+  customers,
+  shops,
+  activeShopId,
+}: {
+  customers: CustomerRow[];
+  shops: { id: number; name: string }[];
+  activeShopId: number;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<CustomerRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -30,7 +40,8 @@ export function CustomersClient({ customers }: { customers: CustomerRow[] }) {
         c.name.toLowerCase().includes(q) ||
         (c.kana ?? "").toLowerCase().includes(q) ||
         (c.phone ?? "").toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q),
+        (c.email ?? "").toLowerCase().includes(q) ||
+        (c.code ?? "").toLowerCase().includes(q),
     );
   }, [customers, query]);
 
@@ -59,13 +70,20 @@ export function CustomersClient({ customers }: { customers: CustomerRow[] }) {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="氏名・カナ・電話・メールで検索"
+          placeholder="氏名・カナ・電話・メール・患者番号で検索"
           className="sm:max-w-sm"
         />
         <div className="flex shrink-0 items-center gap-3">
           <span className="text-xs text-faint">
             {customers.length}件中 {filtered.length}件
           </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setImporting(true)}
+          >
+            CSV取込
+          </Button>
           <Button size="sm" onClick={() => setCreating(true)}>
             ＋ 新規顧客
           </Button>
@@ -102,8 +120,18 @@ export function CustomersClient({ customers }: { customers: CustomerRow[] }) {
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
+                    {c.code && (
+                      <span className="tabular-nums text-faint">
+                        No.{c.code}
+                      </span>
+                    )}
                     {c.phone && (
                       <span className="tabular-nums">TEL：{c.phone}</span>
+                    )}
+                    {c.birthday && (
+                      <span className="tabular-nums">
+                        生：{dateFmt.format(new Date(c.birthday))}
+                      </span>
                     )}
                     {c.email && (
                       <span className="truncate">{c.email}</span>
@@ -147,6 +175,15 @@ export function CustomersClient({ customers }: { customers: CustomerRow[] }) {
 
       {(creating || editing) && (
         <CustomerForm open initial={editing} onClose={closeModal} />
+      )}
+
+      {importing && (
+        <CustomerImportModal
+          open
+          onClose={() => setImporting(false)}
+          shops={shops}
+          defaultShopId={activeShopId}
+        />
       )}
     </>
   );

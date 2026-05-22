@@ -34,10 +34,15 @@ export async function saveCustomer(
   const shopId = await getActiveShopId();
 
   const data = {
+    code: input.code ?? null,
     name: input.name,
     kana: input.kana ?? null,
     phone: input.phone ?? null,
     email: input.email ?? null,
+    postalCode: input.postalCode ?? null,
+    address: input.address ?? null,
+    gender: input.gender ?? null,
+    birthday: input.birthday ? new Date(`${input.birthday}T00:00:00Z`) : null,
     note: input.note ?? null,
   };
 

@@ -4,9 +4,17 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Textarea } from "@/components/ui/Input";
+import { Input, Label, Textarea, Select } from "@/components/ui/Input";
 import { saveCustomer } from "@/feature/customer/actions/customerActions";
 import type { CustomerRow } from "@/feature/customer/services/getCustomers";
+
+/** Date(UTC保存) → <input type="date"> 用の "YYYY-MM-DD"。 */
+function toDateInput(d: Date | string | null | undefined): string {
+  if (!d) return "";
+  const dt = typeof d === "string" ? new Date(d) : d;
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toISOString().slice(0, 10);
+}
 
 export function CustomerForm({
   open,
@@ -22,10 +30,15 @@ export function CustomerForm({
   const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
+    code: initial?.code ?? "",
     name: initial?.name ?? "",
     kana: initial?.kana ?? "",
     phone: initial?.phone ?? "",
     email: initial?.email ?? "",
+    postalCode: initial?.postalCode ?? "",
+    address: initial?.address ?? "",
+    gender: initial?.gender ?? "",
+    birthday: toDateInput(initial?.birthday),
     note: initial?.note ?? "",
   });
 
@@ -37,9 +50,14 @@ export function CustomerForm({
     const fd = new FormData();
     if (initial?.id) fd.set("id", String(initial.id));
     fd.set("name", form.name.trim());
+    if (form.code.trim()) fd.set("code", form.code.trim());
     if (form.kana.trim()) fd.set("kana", form.kana.trim());
     if (form.phone.trim()) fd.set("phone", form.phone.trim());
     if (form.email.trim()) fd.set("email", form.email.trim());
+    if (form.postalCode.trim()) fd.set("postalCode", form.postalCode.trim());
+    if (form.address.trim()) fd.set("address", form.address.trim());
+    if (form.gender.trim()) fd.set("gender", form.gender.trim());
+    if (form.birthday.trim()) fd.set("birthday", form.birthday.trim());
     if (form.note.trim()) fd.set("note", form.note.trim());
 
     startTransition(async () => {
@@ -102,6 +120,60 @@ export function CustomerForm({
               maxLength={120}
             />
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>生年月日</Label>
+            <Input
+              type="date"
+              value={form.birthday}
+              onChange={(e) => set("birthday", e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>性別</Label>
+            <Select
+              value={form.gender}
+              onChange={(e) => set("gender", e.target.value)}
+            >
+              <option value="">未設定</option>
+              <option value="男性">男性</option>
+              <option value="女性">女性</option>
+              <option value="その他">その他</option>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[8rem_1fr] gap-3">
+          <div>
+            <Label>郵便番号</Label>
+            <Input
+              value={form.postalCode}
+              onChange={(e) => set("postalCode", e.target.value)}
+              placeholder="6540121"
+              maxLength={16}
+            />
+          </div>
+          <div>
+            <Label>住所</Label>
+            <Input
+              value={form.address}
+              onChange={(e) => set("address", e.target.value)}
+              placeholder="神戸市…"
+              maxLength={200}
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label>患者番号 / 会員番号</Label>
+          <Input
+            value={form.code}
+            onChange={(e) => set("code", e.target.value)}
+            placeholder="（任意・取込時の重複判定に使用）"
+            maxLength={60}
+          />
         </div>
 
         <div>
