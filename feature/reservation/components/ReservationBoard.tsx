@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
@@ -434,9 +435,19 @@ export function ReservationBoard({
                       style={{ background: row.color }}
                     />
                   )}
-                  <span className="truncate text-sm font-medium text-ink">
-                    {row.name}
-                  </span>
+                  {row.staffId != null ? (
+                    <Link
+                      href={`/reservation/staff/${row.staffId}?date=${date}`}
+                      className="truncate text-sm font-medium text-ink underline-offset-2 hover:text-accent hover:underline"
+                      title={`${row.name}の週間スケジュールを表示`}
+                    >
+                      {row.name}
+                    </Link>
+                  ) : (
+                    <span className="truncate text-sm font-medium text-ink">
+                      {row.name}
+                    </span>
+                  )}
                 </div>
 
                 <div
