@@ -10,6 +10,7 @@ import { assignLanes } from "@/helper/utils/laneLayout";
 import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
+import { DayCalendar } from "@/feature/reservation/components/DayCalendar";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import type { ReservationOptimisticAction } from "@/feature/reservation/types/optimistic";
@@ -132,6 +133,24 @@ export function ReservationBoard({
     return () => clearInterval(id);
   }, []);
 
+  // 表示モード: timeline=横軸が時間 / day=縦軸が時間（Googleカレンダー風）。
+  // 端末ごとの好みを localStorage に保存して次回も維持する。
+  const [viewMode, setViewMode] = useState<"timeline" | "day">("timeline");
+  useEffect(() => {
+    const v = localStorage.getItem("beau_reservation_view");
+    if (v === "day" || v === "timeline") setViewMode(v);
+  }, []);
+  const toggleView = () =>
+    setViewMode((m) => {
+      const next = m === "timeline" ? "day" : "timeline";
+      try {
+        localStorage.setItem("beau_reservation_view", next);
+      } catch {
+        // localStorage 不可の環境では保存しない（表示自体は機能する）
+      }
+      return next;
+    });
+
   const rows = useMemo(() => {
     // 臨時スタッフは「出勤日」または「その日に既存予約がある日」だけ列を出す。
     const visibleStaffs = formData.staffs.filter((s) => {
@@ -248,6 +267,19 @@ export function ReservationBoard({
           <Button
             size="sm"
             variant="outline"
+            className="hidden sm:inline-flex"
+            onClick={toggleView}
+            title={
+              viewMode === "timeline"
+                ? "縦表示（時間が縦軸）に切り替え"
+                : "横表示（時間が横軸）に切り替え"
+            }
+          >
+            {viewMode === "timeline" ? "縦表示" : "横表示"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() =>
               window.open(
                 `/reservation/print?date=${encodeURIComponent(date)}`,
@@ -285,7 +317,32 @@ export function ReservationBoard({
         </p>
       )}
 
-      <div className="hidden overflow-x-auto rounded-xl border border-line bg-surface shadow-panel sm:block">
+      {viewMode === "day" && (
+        <DayCalendar
+          date={date}
+          today={today}
+          reservations={reservations}
+          cols={rows}
+          startMin={startMin}
+          endMin={endMin}
+          breakBand={breakBand}
+          nowMin={nowMin}
+          onCardClick={openCardEdit}
+          onEmptyClick={(staffId, startTime) =>
+            setModal({
+              kind: "appointment",
+              mode: "create",
+              prefill: { staffId: staffId ?? undefined, startTime },
+            })
+          }
+        />
+      )}
+
+      <div
+        className={`overflow-x-auto rounded-xl border border-line bg-surface shadow-panel ${
+          viewMode === "timeline" ? "hidden sm:block" : "hidden"
+        }`}
+      >
         <div style={{ width: STAFF_W + totalW, minWidth: "100%" }}>
           {/* Header: time axis */}
           <div
