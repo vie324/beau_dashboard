@@ -43,6 +43,7 @@ type FormData = {
     name: string;
     kana: string | null;
     phone: string | null;
+    note: string | null;
   }[];
   visitSources: { id: number; name: string }[];
 };
@@ -431,6 +432,20 @@ export function AppointmentModal({
                 setForm((f) => ({ ...f, customerId: c ? c.id : "" }))
               }
             />
+            {(() => {
+              const cid =
+                form.customerId === "" ? null : Number(form.customerId);
+              const sel = cid
+                ? formData.customers.find((c) => c.id === cid)
+                : null;
+              if (!sel?.note) return null;
+              return (
+                <div className="mt-2 rounded-xl border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-ink">
+                  <span className="font-semibold text-warn">メモ：</span>
+                  <span className="whitespace-pre-wrap">{sel.note}</span>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <>

@@ -48,6 +48,7 @@ export function DayCalendar({
   breakBand,
   nowMin,
   onCardClick,
+  onStatusClick,
   onEmptyClick,
   onDragCreate,
 }: {
@@ -60,6 +61,7 @@ export function DayCalendar({
   breakBand: { bs: number; be: number } | null;
   nowMin: number | null;
   onCardClick: (r: ReservationRow) => void;
+  onStatusClick: (r: ReservationRow, rect: DOMRect) => void;
   onEmptyClick: (staffId: number | null, startTime: string) => void;
   onDragCreate: (
     staffId: number | null,
@@ -357,6 +359,7 @@ export function DayCalendar({
                   const cancelled = [3, 4, 99].includes(r.status);
                   const name =
                     r.customer?.name ?? r.guestName ?? "（名称未設定）";
+                  const note = r.customer?.note ?? null;
                   return (
                     <button
                       key={r.id}
@@ -365,7 +368,7 @@ export function DayCalendar({
                         ev.stopPropagation();
                         onCardClick(r);
                       }}
-                      title={`${minToTime(s)}–${minToTime(e)} ${name}`}
+                      title={`${minToTime(s)}–${minToTime(e)} ${name}${note ? `\nメモ: ${note}` : ""}`}
                       className={`absolute z-10 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition-colors hover:z-20 hover:border-accent/70 ${
                         cancelled
                           ? "border-line bg-elevated/60 opacity-60"
@@ -386,15 +389,40 @@ export function DayCalendar({
                           {minToTime(s)}
                         </span>
                         {height > 34 && (
-                          <Badge
-                            className={`${meta.className} shrink-0 whitespace-nowrap`}
+                          <span
+                            role="button"
+                            tabIndex={-1}
+                            onMouseDown={(ev) => ev.stopPropagation()}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              onStatusClick(
+                                r,
+                                (
+                                  ev.currentTarget as HTMLElement
+                                ).getBoundingClientRect(),
+                              );
+                            }}
+                            title="クリックでステータス変更"
+                            className="shrink-0 cursor-pointer"
                           >
-                            {meta.label}
-                          </Badge>
+                            <Badge
+                              className={`${meta.className} whitespace-nowrap`}
+                            >
+                              {meta.label}
+                            </Badge>
+                          </span>
                         )}
                       </div>
-                      <div className="truncate font-medium text-ink">
-                        {name}
+                      <div className="flex min-w-0 items-center gap-1">
+                        {note && (
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+                            title={note}
+                          />
+                        )}
+                        <span className="truncate font-medium text-ink">
+                          {name}
+                        </span>
                       </div>
                       {r.menu && height > 48 && (
                         <div className="truncate text-faint">{r.menu.name}</div>

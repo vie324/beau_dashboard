@@ -4,7 +4,7 @@ import { jstDateTimeToDate } from "@/helper/utils/time";
 const RESERVATION_INCLUDE = {
   staff: { select: { id: true, name: true, color: true } },
   equipment: { select: { id: true, name: true, color: true } },
-  customer: { select: { id: true, name: true, phone: true } },
+  customer: { select: { id: true, name: true, phone: true, note: true } },
   menu: { select: { id: true, name: true, durationMin: true } },
   visitSource: {
     select: { id: true, name: true, color: true, labelTextColor: true },
