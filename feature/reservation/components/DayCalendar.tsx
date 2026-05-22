@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
@@ -126,7 +127,17 @@ export function DayCalendar({
                   style={{ background: c.color }}
                 />
               )}
-              <span className="truncate">{c.name}</span>
+              {c.staffId != null ? (
+                <Link
+                  href={`/reservation/staff/${c.staffId}?date=${date}`}
+                  className="truncate underline-offset-2 hover:text-accent hover:underline"
+                  title={`${c.name}の週間スケジュールを表示`}
+                >
+                  {c.name}
+                </Link>
+              ) : (
+                <span className="truncate">{c.name}</span>
+              )}
             </div>
           ))}
         </div>
