@@ -39,6 +39,7 @@ type FormData = {
   }[];
   customers: {
     id: number;
+    code: string | null;
     name: string;
     kana: string | null;
     phone: string | null;
@@ -223,7 +224,24 @@ export function AppointmentModal({
           ? { type: "update", row: optimisticRow }
           : { type: "add", row: optimisticRow },
       );
-      const res = await saveAppointment(null, fd);
+      let res = await saveAppointment(null, fd);
+
+      // スタッフ/設備が埋まっている場合は、手動に限り「枠を追加」して登録できる。
+      if (!res.ok && res.conflict) {
+        const target = res.conflict === "equipment" ? "設備" : "担当スタッフ";
+        const proceed = window.confirm(
+          `${target}はこの時間帯に別の予約があります。\n枠を追加してこの予約を登録しますか？`,
+        );
+        if (proceed) {
+          fd.set("allowOverlap", "1");
+          res = await saveAppointment(null, fd);
+        } else {
+          // 取り消し: 楽観的に表示した行をサーバー状態へ戻す。
+          router.refresh();
+          return;
+        }
+      }
+
       if (res.ok) {
         onClose();
         router.refresh();
@@ -665,7 +683,8 @@ function CustomerCombobox({
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.kana ?? "").toLowerCase().includes(q) ||
-        (c.phone ?? "").toLowerCase().includes(q),
+        (c.phone ?? "").toLowerCase().includes(q) ||
+        (c.code ?? "").toLowerCase().includes(q),
     );
   }, [customers, query]);
 
@@ -690,7 +709,7 @@ function CustomerCombobox({
       <Input
         type="text"
         value={display}
-        placeholder="氏名・カナ・電話で検索"
+        placeholder="氏名・カナ・電話・患者番号で検索"
         onFocus={() => {
           setOpen(true);
           setQuery("");
@@ -748,8 +767,12 @@ function CustomerCombobox({
                     <span className="block truncate font-medium text-ink">
                       {c.name}
                     </span>
-                    {c.kana && (
+                    {(c.code || c.kana) && (
                       <span className="block truncate text-[11px] text-faint">
+                        {c.code && (
+                          <span className="tabular-nums">No.{c.code}</span>
+                        )}
+                        {c.code && c.kana ? " ・ " : ""}
                         {c.kana}
                       </span>
                     )}

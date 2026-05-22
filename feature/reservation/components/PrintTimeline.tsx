@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import { formatJpDate, jstMinutesOfDay } from "@/helper/utils/time";
+import { assignLanes } from "@/helper/utils/laneLayout";
 
 type Session = "all" | "morning" | "afternoon";
 
@@ -305,7 +306,19 @@ export function PrintTimeline({
                 )}
 
                 {/* Appointments */}
-                {apptsForColumn(col).map((r) => {
+                {(() => {
+                const colItems = apptsForColumn(col);
+                const laneMap = assignLanes(
+                  colItems.map((r) => ({
+                    id: r.id,
+                    start: jstMinutesOfDay(new Date(r.startAt)),
+                    end: Math.max(
+                      jstMinutesOfDay(new Date(r.endAt)),
+                      jstMinutesOfDay(new Date(r.startAt)) + 15,
+                    ),
+                  })),
+                );
+                return colItems.map((r) => {
                   const startTotalMin = jstMinutesOfDay(new Date(r.startAt));
                   const endTotalMin = jstMinutesOfDay(new Date(r.endAt));
                   const top = ((startTotalMin - startMin) / MIN_STEP) * cellPx;
@@ -313,16 +326,21 @@ export function PrintTimeline({
                     cellPx - 2,
                     ((endTotalMin - startTotalMin) / MIN_STEP) * cellPx - 2,
                   );
+                  const lay = laneMap.get(r.id) ?? { lane: 0, lanes: 1 };
+                  const leftStyle = `calc(${(lay.lane / lay.lanes) * 100}% + 2px)`;
+                  const widthStyle = `calc(${(1 / lay.lanes) * 100}% - 4px)`;
                   const cancelled = [3, 4, 99].includes(r.status);
                   const isBlock = r.kind === "block";
                   if (isBlock) {
                     return (
                       <div
                         key={r.id}
-                        className="absolute inset-x-0.5 overflow-hidden rounded border border-line bg-elevated/70 px-1 py-0.5 text-[9px] text-muted"
+                        className="absolute overflow-hidden rounded border border-line bg-elevated/70 px-1 py-0.5 text-[9px] text-muted"
                         style={{
                           top,
                           height,
+                          left: leftStyle,
+                          width: widthStyle,
                           background:
                             "repeating-linear-gradient(45deg, rgba(155,144,121,0.25) 0 4px, rgba(155,144,121,0.08) 4px 8px)",
                         }}
@@ -339,12 +357,12 @@ export function PrintTimeline({
                   return (
                     <div
                       key={r.id}
-                      className={`absolute inset-x-0.5 overflow-hidden rounded border px-1 py-0.5 text-[9px] leading-tight ${
+                      className={`absolute overflow-hidden rounded border px-1 py-0.5 text-[9px] leading-tight ${
                         cancelled
                           ? "border-line/40 bg-base/40 text-faint line-through"
                           : "border-ink/30 bg-white text-ink"
                       }`}
-                      style={{ top, height }}
+                      style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-semibold tabular-nums">
@@ -364,7 +382,8 @@ export function PrintTimeline({
                       )}
                     </div>
                   );
-                })}
+                });
+                })()}
               </div>
             </div>
           ))}
