@@ -10,6 +10,7 @@ import {
   checkEquipmentAvailability,
 } from "@/feature/reservation/actions/reservationActions";
 import { publicBookingSchema } from "@/feature/reservation/schema/reservationSchema";
+import { sendBookingEmails } from "@/feature/notify/sendBookingEmails";
 
 export type PublicResult =
   | { ok: true }
@@ -465,8 +466,9 @@ export async function submitPublicBooking(
     }
   }
 
+  let createdId: number;
   try {
-    await db.appointment.create({
+    const created = await db.appointment.create({
       data: {
         shopId: shop.id,
         menuId: menu.id,
@@ -482,13 +484,18 @@ export async function submitPublicBooking(
         guestPhone: input.guestPhone,
         note: input.note ?? null,
       },
+      select: { id: true },
     });
+    createdId = created.id;
   } catch {
     return {
       ok: false,
       error: "予約の送信に失敗しました。時間をおいて再度お試しください",
     };
   }
+
+  // 店舗側への新規予約通知（メールが設定されていれば送る）。失敗しても予約は成功。
+  await sendBookingEmails(createdId);
 
   revalidatePath("/reservation");
   return { ok: true };

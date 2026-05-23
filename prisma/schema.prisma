@@ -51,6 +51,8 @@ model Shop {
   address           String?
   phone             String?
   lineUrl           String?
+  // 新規予約が入ったときに通知を送る店舗側のメールアドレス（任意）
+  notificationEmail String?
   defaultBookingSlug String?
   // Business hours / break as "HH:mm" (null = use defaults)
   openTime          String?

@@ -22,6 +22,14 @@ export const shopSchema = z.object({
   address: z.string().trim().max(200).optional().nullable(),
   phone: z.string().trim().max(40).optional().nullable(),
   lineUrl: z.string().trim().max(300).optional().nullable(),
+  notificationEmail: z
+    .string()
+    .trim()
+    .max(120)
+    .email("メールアドレスの形式が正しくありません")
+    .optional()
+    .nullable()
+    .or(z.literal("")),
   openTime: hhmm,
   closeTime: hhmm,
   breakStart: hhmm,
