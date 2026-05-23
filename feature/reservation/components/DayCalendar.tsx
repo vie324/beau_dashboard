@@ -393,8 +393,13 @@ export function DayCalendar({
                           </Badge>
                         )}
                       </div>
-                      <div className="truncate font-medium text-ink">
-                        {name}
+                      <div className="flex min-w-0 items-center gap-1 font-medium text-ink">
+                        {r.customer?.code && (
+                          <span className="shrink-0 text-faint tabular-nums">
+                            No.{r.customer.code}
+                          </span>
+                        )}
+                        <span className="truncate">{name}</span>
                       </div>
                       {r.menu && height > 48 && (
                         <div className="truncate text-faint">{r.menu.name}</div>

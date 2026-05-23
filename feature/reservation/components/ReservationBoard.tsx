@@ -676,8 +676,13 @@ export function ReservationBoard({
                             {meta.label}
                           </Badge>
                         </div>
-                        <div className="truncate font-medium text-ink">
-                          {name}
+                        <div className="flex min-w-0 items-center gap-1 font-medium text-ink">
+                          {r.customer?.code && (
+                            <span className="shrink-0 text-faint tabular-nums">
+                              No.{r.customer.code}
+                            </span>
+                          )}
+                          <span className="truncate">{name}</span>
                         </div>
                         {r.menu && (
                           <div className="truncate text-faint">
@@ -774,6 +779,11 @@ export function ReservationBoard({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
+                        {r.customer?.code && (
+                          <span className="shrink-0 text-xs text-faint tabular-nums">
+                            No.{r.customer.code}
+                          </span>
+                        )}
                         <span className="truncate font-medium text-ink">
                           {name}
                         </span>

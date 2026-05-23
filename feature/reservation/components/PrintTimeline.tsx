@@ -368,9 +368,9 @@ export function PrintTimeline({
                         <span className="font-semibold tabular-nums">
                           {fmt(startTotalMin)}
                         </span>
-                        {r.customer?.id != null && (
+                        {r.customer?.code && (
                           <span className="text-[8px] text-muted tabular-nums">
-                            #{r.customer.id}
+                            No.{r.customer.code}
                           </span>
                         )}
                       </div>
@@ -378,6 +378,11 @@ export function PrintTimeline({
                       {menuName && height > cellPx * 1.5 && (
                         <div className="truncate text-[8px] text-muted">
                           {menuName}
+                        </div>
+                      )}
+                      {r.note && height > cellPx * 2 && (
+                        <div className="line-clamp-2 text-[8px] text-ink/80">
+                          {r.note}
                         </div>
                       )}
                     </div>

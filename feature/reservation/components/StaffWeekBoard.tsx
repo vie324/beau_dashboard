@@ -512,8 +512,13 @@ export function StaffWeekBoard({
                             </Badge>
                           )}
                         </div>
-                        <div className="truncate font-medium text-ink">
-                          {name}
+                        <div className="flex min-w-0 items-center gap-1 font-medium text-ink">
+                          {r.customer?.code && (
+                            <span className="shrink-0 text-faint tabular-nums">
+                              No.{r.customer.code}
+                            </span>
+                          )}
+                          <span className="truncate">{name}</span>
                         </div>
                         {r.menu && height > 48 && (
                           <div className="truncate text-faint">
@@ -597,8 +602,13 @@ export function StaffWeekBoard({
                           <span className="w-20 shrink-0 text-xs font-semibold tabular-nums text-ink">
                             {minToTime(s)}–{minToTime(e)}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                            {name}
+                          <span className="flex min-w-0 flex-1 items-center gap-1 text-sm text-ink">
+                            {!isBlock && r.customer?.code && (
+                              <span className="shrink-0 text-xs text-faint tabular-nums">
+                                No.{r.customer.code}
+                              </span>
+                            )}
+                            <span className="truncate">{name}</span>
                           </span>
                           {!isBlock && (
                             <Badge
