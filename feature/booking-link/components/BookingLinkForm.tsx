@@ -124,7 +124,7 @@ export function BookingLinkForm({
             <Input
               value={form.slug}
               onChange={(e) => set("slug", e.target.value)}
-              placeholder="beau"
+              placeholder="dreamland"
             />
           </div>
         </div>

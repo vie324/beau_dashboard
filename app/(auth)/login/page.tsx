@@ -14,7 +14,7 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="font-display text-4xl tracking-[0.2em] text-accent">
-            BEAU
+            Dreamland
           </div>
           <p className="mt-2 text-xs uppercase tracking-[0.3em] text-faint">
             Salon Reservation

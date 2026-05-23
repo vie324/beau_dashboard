@@ -32,7 +32,7 @@ export default async function DashboardLayout({
             href="/reservation"
             className="font-display text-xl tracking-[0.18em] text-accent"
           >
-            BEAU
+            Dreamland
           </Link>
           <div className="hidden sm:block">
             <TopNav />

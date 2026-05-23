@@ -16,7 +16,7 @@ export default async function PublicBookingPage({
       <main className="flex min-h-screen items-center justify-center px-4">
         <div className="text-center">
           <div className="font-display text-3xl tracking-[0.2em] text-accent">
-            BEAU
+            Dreamland
           </div>
           <p className="mt-4 text-sm text-muted">
             この予約リンクは現在ご利用いただけません。
@@ -31,7 +31,7 @@ export default async function PublicBookingPage({
       <div className="mx-auto max-w-md">
         <div className="mb-6 text-center">
           <div className="font-display text-3xl tracking-[0.22em] text-accent">
-            BEAU
+            Dreamland
           </div>
           <p className="mt-1 text-xs uppercase tracking-[0.3em] text-faint">
             Online Reservation
@@ -59,7 +59,7 @@ export default async function PublicBookingPage({
         </div>
 
         <p className="mt-6 text-center text-[11px] text-faint">
-          Powered by Beau
+          Powered by Dreamland
         </p>
       </div>
     </main>
