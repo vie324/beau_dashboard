@@ -67,6 +67,7 @@ export function AppointmentModal({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [salesTouched, setSalesTouched] = useState(false);
 
   const isEdit = Boolean(initial);
@@ -185,8 +186,9 @@ export function AppointmentModal({
     } as unknown as ReservationRow;
   }
 
-  function submit() {
+  function submit(continueCreate: boolean = false) {
     setError(null);
+    setSuccessMsg(null);
     const payload = {
       ...(initial ? { id: initial.id } : {}),
       date: form.date,
@@ -243,8 +245,27 @@ export function AppointmentModal({
       }
 
       if (res.ok) {
-        onClose();
-        router.refresh();
+        if (continueCreate && !isUpdate) {
+          // 同じ顧客で続けて入力できるよう、開始時刻だけ進めて他は維持。
+          const startAt = jstDateTimeToDate(form.date, form.startTime);
+          const nextStart = addMinutes(startAt, form.durationMin);
+          const nextStartTime = toTime(nextStart);
+          setForm((f) => ({
+            ...f,
+            startTime: nextStartTime,
+            sales: "",
+            note: "",
+            status: 0,
+          }));
+          setSalesTouched(false);
+          setSuccessMsg(
+            "保存しました。続けて新規予約を入力できます（顧客・メニュー・担当は維持）。",
+          );
+          router.refresh();
+        } else {
+          onClose();
+          router.refresh();
+        }
       } else {
         setError(res.error);
       }
@@ -518,6 +539,11 @@ export function AppointmentModal({
             {error}
           </p>
         )}
+        {successMsg && (
+          <p className="rounded-xl border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-ok">
+            {successMsg}
+          </p>
+        )}
 
         <div className="flex items-center justify-between pt-2">
           {isEdit ? (
@@ -527,11 +553,22 @@ export function AppointmentModal({
           ) : (
             <span />
           )}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
               キャンセル
             </Button>
-            <Button size="sm" onClick={submit} disabled={pending}>
+            {!isEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => submit(true)}
+                disabled={pending}
+                title="保存後に同じ顧客・メニュー・担当でもう1件入力します"
+              >
+                {pending ? "保存中…" : "保存して続けて入力"}
+              </Button>
+            )}
+            <Button size="sm" onClick={() => submit(false)} disabled={pending}>
               {pending ? "保存中…" : "保存"}
             </Button>
           </div>
