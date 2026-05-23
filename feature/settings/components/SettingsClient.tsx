@@ -658,7 +658,7 @@ function ShopForm({
           <Input
             value={f.name}
             onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="Beau 銀座本店"
+            placeholder="Dreamland 銀座本店"
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">

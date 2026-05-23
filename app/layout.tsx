@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Beau — サロン予約管理",
-  description: "Beau salon reservation dashboard",
+  title: "Dreamland — サロン予約管理",
+  description: "Dreamland salon reservation dashboard",
 };
 
 export default function RootLayout({

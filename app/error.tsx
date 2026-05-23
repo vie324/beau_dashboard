@@ -10,7 +10,7 @@ export default function GlobalError({
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md text-center">
         <div className="font-display text-3xl tracking-[0.22em] text-accent">
-          BEAU
+          Dreamland
         </div>
         <div className="mt-8 rounded-xl border border-line bg-surface p-8 shadow-panel">
           <h1 className="text-lg font-semibold text-ink">
@@ -30,7 +30,7 @@ export default function GlobalError({
           </button>
         </div>
         <p className="mt-6 text-center text-[11px] text-faint">
-          Powered by Beau
+          Powered by Dreamland
         </p>
       </div>
     </main>

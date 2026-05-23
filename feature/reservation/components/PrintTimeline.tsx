@@ -391,7 +391,7 @@ export function PrintTimeline({
       </div>
 
       <p className="mt-3 text-right text-[9px] text-faint">
-        Powered by Beau
+        Powered by Dreamland
       </p>
     </div>
   );
