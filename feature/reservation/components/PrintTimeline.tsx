@@ -354,6 +354,12 @@ export function PrintTimeline({
                   const name =
                     r.customer?.name ?? r.guestName ?? "（名称未設定）";
                   const menuName = r.menu?.name ?? "";
+                  // セル高に応じて表示を切り替え（メモ優先）:
+                  //   1枠(15分): 1行に時刻+名前(+メモ追記)を集約
+                  //   2枠(30分): 時刻/名前/メモ（メニュー名は省略）
+                  //   3枠以上 : 時刻/名前/メニュー/メモ
+                  const compact = height < cellPx * 1.4;
+                  const showMenu = !!menuName && height >= cellPx * 2.4;
                   return (
                     <div
                       key={r.id}
@@ -364,26 +370,45 @@ export function PrintTimeline({
                       }`}
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-semibold tabular-nums">
-                          {fmt(startTotalMin)}
-                        </span>
-                        {r.customer?.code && (
-                          <span className="text-[8px] text-muted tabular-nums">
-                            No.{r.customer.code}
+                      {compact ? (
+                        <div className="flex items-center gap-1 truncate">
+                          <span className="shrink-0 font-semibold tabular-nums">
+                            {fmt(startTotalMin)}
                           </span>
-                        )}
-                      </div>
-                      <div className="truncate font-medium">{name}</div>
-                      {menuName && height > cellPx * 1.5 && (
-                        <div className="truncate text-[8px] text-muted">
-                          {menuName}
+                          {r.customer?.code && (
+                            <span className="shrink-0 text-[8px] text-muted tabular-nums">
+                              No.{r.customer.code}
+                            </span>
+                          )}
+                          <span className="truncate font-medium">
+                            {name}
+                            {r.note ? ` — ${r.note}` : ""}
+                          </span>
                         </div>
-                      )}
-                      {r.note && height > cellPx * 2 && (
-                        <div className="line-clamp-2 text-[8px] text-ink/80">
-                          {r.note}
-                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold tabular-nums">
+                              {fmt(startTotalMin)}
+                            </span>
+                            {r.customer?.code && (
+                              <span className="text-[8px] text-muted tabular-nums">
+                                No.{r.customer.code}
+                              </span>
+                            )}
+                          </div>
+                          <div className="truncate font-medium">{name}</div>
+                          {showMenu && (
+                            <div className="truncate text-[8px] text-muted">
+                              {menuName}
+                            </div>
+                          )}
+                          {r.note && (
+                            <div className="line-clamp-2 text-[8px] text-ink/80">
+                              {r.note}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   );
