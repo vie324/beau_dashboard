@@ -381,28 +381,45 @@ export function DayCalendar({
                           r.visitSource?.labelTextColor ?? "#d8b06a",
                       }}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="truncate font-semibold tabular-nums text-ink">
-                          {minToTime(s)}
-                        </span>
-                        {height > 34 && (
-                          <Badge
-                            className={`${meta.className} shrink-0 whitespace-nowrap`}
-                          >
-                            {meta.label}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex min-w-0 items-center gap-1 font-medium text-ink">
-                        {r.customer?.code && (
-                          <span className="shrink-0 text-faint tabular-nums">
-                            No.{r.customer.code}
+                      {height < 36 ? (
+                        // 30分以下のカードは1行に集約（時刻 + No. + 名前）
+                        <div className="flex items-center gap-1 truncate leading-tight">
+                          <span className="shrink-0 font-semibold tabular-nums text-ink">
+                            {minToTime(s)}
                           </span>
-                        )}
-                        <span className="truncate">{name}</span>
-                      </div>
-                      {r.menu && height > 48 && (
-                        <div className="truncate text-faint">{r.menu.name}</div>
+                          {r.customer?.code && (
+                            <span className="shrink-0 text-faint tabular-nums">
+                              No.{r.customer.code}
+                            </span>
+                          )}
+                          <span className="truncate font-medium text-ink">
+                            {name}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="truncate font-semibold tabular-nums text-ink">
+                              {minToTime(s)}
+                            </span>
+                            <Badge
+                              className={`${meta.className} shrink-0 whitespace-nowrap`}
+                            >
+                              {meta.label}
+                            </Badge>
+                          </div>
+                          <div className="flex min-w-0 items-center gap-1 font-medium text-ink">
+                            {r.customer?.code && (
+                              <span className="shrink-0 text-faint tabular-nums">
+                                No.{r.customer.code}
+                              </span>
+                            )}
+                            <span className="truncate">{name}</span>
+                          </div>
+                          {r.menu && height > 48 && (
+                            <div className="truncate text-faint">{r.menu.name}</div>
+                          )}
+                        </>
                       )}
                     </button>
                   );
