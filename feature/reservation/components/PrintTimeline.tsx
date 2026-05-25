@@ -31,9 +31,9 @@ type Column = {
 };
 
 // 各セルの基本高さ (px)。1 日表示で 12-13 時間が A4 縦に収まる目安。
-// 午前/午後のみ表示するときはセル高を動的に拡大して同じくらいの紙面を使う。
+// 午前/午後のみ表示するときはセル高を動的に拡大して紙面いっぱいに使う。
 const CELL_PX_BASE = 18;
-const CELL_PX_MAX = 48;
+const CELL_PX_MAX = 80;
 const TIMELINE_TARGET_PX = 1000;
 const MIN_STEP = 15;
 // 休憩時間帯を縦軸から省略するときに挟む区切りの高さ。
@@ -322,11 +322,38 @@ export function PrintTimeline({
 
               <div
                 className="relative overflow-hidden"
-                style={{
-                  height: totalHeight,
-                  background: `repeating-linear-gradient(0deg, transparent 0 ${cellPx - 1}px, rgba(0,0,0,0.04) ${cellPx - 1}px ${cellPx}px)`,
-                }}
+                style={{ height: totalHeight }}
               >
+                {/* 背景の薄い横線グリッド。
+                    休憩を省く場合は朝/午後を別々に描画して時刻列と線が揃うようにする。 */}
+                {(() => {
+                  const grid = `repeating-linear-gradient(0deg, transparent 0 ${cellPx - 1}px, rgba(0,0,0,0.04) ${cellPx - 1}px ${cellPx}px)`;
+                  if (!skipBreak) {
+                    return (
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ background: grid }}
+                      />
+                    );
+                  }
+                  return (
+                    <>
+                      <div
+                        className="absolute inset-x-0 pointer-events-none"
+                        style={{ top: 0, height: breakGapTop, background: grid }}
+                      />
+                      <div
+                        className="absolute inset-x-0 pointer-events-none"
+                        style={{
+                          top: breakGapTop + BREAK_GAP_PX,
+                          height: totalHeight - breakGapTop - BREAK_GAP_PX,
+                          background: grid,
+                        }}
+                      />
+                    </>
+                  );
+                })()}
+
                 {/* 休憩区切り帯（時刻列の区切りと位置を合わせる） */}
                 {skipBreak && (
                   <div
@@ -382,7 +409,7 @@ export function PrintTimeline({
                             "repeating-linear-gradient(45deg, rgba(155,144,121,0.25) 0 4px, rgba(155,144,121,0.08) 4px 8px)",
                         }}
                       >
-                        <div className="truncate font-medium">
+                        <div className="break-words font-medium">
                           {r.blockLabel ?? "時間ブロック"}
                         </div>
                       </div>
@@ -409,9 +436,9 @@ export function PrintTimeline({
                     >
                       {compact ? (
                         // 15分枠。1行目に時刻+No+名前、メモがあれば2行目に表示。
-                        // 縦に入りきらないときは overflow-hidden で下が切れるだけで安全。
+                        // 名前・メモは truncate せず、入る範囲で折り返し、はみ出した分は overflow-hidden で切る。
                         <div className="flex flex-col overflow-hidden leading-tight">
-                          <div className="flex items-center gap-1 overflow-hidden">
+                          <div className="flex items-start gap-1 overflow-hidden">
                             <span className="shrink-0 font-semibold tabular-nums">
                               {fmt(startTotalMin)}
                             </span>
@@ -420,12 +447,12 @@ export function PrintTimeline({
                                 No.{r.customer.code}
                               </span>
                             )}
-                            <span className="min-w-0 truncate font-medium">
+                            <span className="min-w-0 break-words font-medium">
                               {name}
                             </span>
                           </div>
                           {r.note && (
-                            <div className="truncate text-[8px] text-ink/70">
+                            <div className="break-words text-[8px] text-ink/70">
                               {r.note}
                             </div>
                           )}
@@ -442,14 +469,14 @@ export function PrintTimeline({
                               </span>
                             )}
                           </div>
-                          <div className="truncate font-medium">{name}</div>
+                          <div className="break-words font-medium">{name}</div>
                           {showMenu && (
-                            <div className="truncate text-[8px] text-muted">
+                            <div className="break-words text-[8px] text-muted">
                               {menuName}
                             </div>
                           )}
                           {r.note && (
-                            <div className="line-clamp-2 text-[8px] text-ink/80">
+                            <div className="break-words text-[8px] text-ink/80">
                               {r.note}
                             </div>
                           )}
