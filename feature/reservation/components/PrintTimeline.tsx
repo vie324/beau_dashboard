@@ -426,7 +426,9 @@ export function PrintTimeline({
                     );
                   }
                   const name =
-                    r.customer?.name ?? r.guestName ?? "（名称未設定）";
+                    r.customer?.name?.trim() ||
+                    r.guestName?.trim() ||
+                    "（名称未設定）";
                   const menuName = r.menu?.name ?? "";
                   // セル高に応じて表示を切り替え（メモ優先）:
                   //   1枠(15分): 1行に時刻+名前(+メモ追記)を集約
@@ -445,10 +447,12 @@ export function PrintTimeline({
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
-                        // 15分枠。1行目に時刻+No+名前、メモがあれば2行目に表示。
-                        // 名前・メモは truncate せず、入る範囲で折り返し、はみ出した分は overflow-hidden で切る。
+                        // 15分枠。1行目に時刻+No、2行目以降に名前(+メモ)。
+                        // 時刻+Noと名前を同じ flex 行に並べると、ダブルブッキングで
+                        // レーンが半分の幅になったとき名前が描画スペースを失って消えるため、
+                        // 名前は必ず独立した行で全幅で描画する。
                         <div className="flex flex-col overflow-hidden leading-tight">
-                          <div className="flex items-start gap-1 overflow-hidden">
+                          <div className="flex items-center gap-1 overflow-hidden">
                             <span className="shrink-0 font-semibold tabular-nums">
                               {fmt(startTotalMin)}
                             </span>
@@ -457,10 +461,8 @@ export function PrintTimeline({
                                 No.{r.customer.code}
                               </span>
                             )}
-                            <span className="min-w-0 break-words font-medium">
-                              {name}
-                            </span>
                           </div>
+                          <div className="break-words font-medium">{name}</div>
                           {r.note && (
                             <div className="break-words text-[8px] text-ink/70">
                               {r.note}
