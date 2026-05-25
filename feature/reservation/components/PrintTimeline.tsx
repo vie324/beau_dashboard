@@ -87,8 +87,10 @@ export function PrintTimeline({
     }
     // 午前/午後セッションは break 境界で範囲を絞り、はみ出し予約は許容するが
     // 表示は対象セッション内に限定する。break 未定義のときは全日扱い。
+    // 午前は休憩開始ぴったりで切ると 12:30〜13:00 のような遅めの午前枠が
+    // 印刷に出ないので、+1 時間 (休憩終了を上限) まで描画範囲を伸ばす。
     if (session === "morning" && breakBand) {
-      end = breakBand.bs;
+      end = Math.min(breakBand.be, breakBand.bs + 60);
     } else if (session === "afternoon" && breakBand) {
       start = breakBand.be;
     } else {
