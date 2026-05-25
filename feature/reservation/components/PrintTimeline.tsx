@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import { formatJpDate, jstMinutesOfDay } from "@/helper/utils/time";
@@ -34,8 +34,10 @@ type Column = {
 // 午前/午後のみ表示するときはセル高を動的に拡大して同じくらいの紙面を使う。
 const CELL_PX_BASE = 18;
 const CELL_PX_MAX = 48;
-const TIMELINE_TARGET_PX = 900;
+const TIMELINE_TARGET_PX = 1000;
 const MIN_STEP = 15;
+// 休憩時間帯を縦軸から省略するときに挟む区切りの高さ。
+const BREAK_GAP_PX = 18;
 
 function parseHm(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -105,11 +107,19 @@ export function PrintTimeline({
     return { startMin: start, endMin: end };
   }, [shopHours, reservations, session, breakBand]);
 
+  // 「1日」表示で営業時間内に休憩がある場合は、休憩帯を縦軸から省略して
+  // 残りの時間を大きく表示する。午前/午後セッションでは既に範囲が休憩で切られている。
+  const skipBreak = session === "all" && breakBand != null;
+  const breakDuration = skipBreak ? breakBand!.be - breakBand!.bs : 0;
+
   const timeSlots = useMemo(() => {
     const arr: number[] = [];
-    for (let m = startMin; m < endMin; m += MIN_STEP) arr.push(m);
+    for (let m = startMin; m < endMin; m += MIN_STEP) {
+      if (skipBreak && m >= breakBand!.bs && m < breakBand!.be) continue;
+      arr.push(m);
+    }
     return arr;
-  }, [startMin, endMin]);
+  }, [startMin, endMin, skipBreak, breakBand]);
 
   const columns: Column[] = useMemo(() => {
     const cols: Column[] = formData.staffs.map((s) => ({
@@ -147,17 +157,34 @@ export function PrintTimeline({
       return e > startMin && s < endMin;
     });
 
-  // セル高さを動的に決定: スロットが少ないとき (午前/午後) はセル高さを拡大して
-  // 1日表示と同じくらい紙面を使う。多いとき (1日全体) は基本値のまま。
+  // セル高さを動的に決定: スロットが少ないとき (午前/午後・休憩省略時) はセル高さを拡大して
+  // 1日表示と同じくらい紙面を使う。多いとき (1日全体・休憩なし) は基本値のまま。
   const cellPx = useMemo(() => {
     const slots = Math.max(1, timeSlots.length);
+    const available = TIMELINE_TARGET_PX - (skipBreak ? BREAK_GAP_PX : 0);
     return Math.max(
       CELL_PX_BASE,
-      Math.min(CELL_PX_MAX, Math.floor(TIMELINE_TARGET_PX / slots)),
+      Math.min(CELL_PX_MAX, Math.floor(available / slots)),
     );
-  }, [timeSlots.length]);
+  }, [timeSlots.length, skipBreak]);
 
-  const totalHeight = timeSlots.length * cellPx;
+  const totalHeight =
+    timeSlots.length * cellPx + (skipBreak ? BREAK_GAP_PX : 0);
+
+  // 絶対時刻(0-1440)→ 縦位置(px)。休憩を省いた分のオフセットと区切り帯を加算する。
+  const abs2top = (abs: number): number => {
+    if (skipBreak && abs >= breakBand!.be) {
+      return (
+        ((abs - startMin - breakDuration) / MIN_STEP) * cellPx + BREAK_GAP_PX
+      );
+    }
+    return ((abs - startMin) / MIN_STEP) * cellPx;
+  };
+
+  // 休憩区切り帯の上端位置（朝の最後のスロットの直下）。
+  const breakGapTop = skipBreak
+    ? ((breakBand!.bs - startMin) / MIN_STEP) * cellPx
+    : 0;
 
   return (
     <div className="print-root mx-auto max-w-[210mm] bg-white p-6 text-ink">
@@ -229,30 +256,41 @@ export function PrintTimeline({
             {timeSlots.map((m) => {
               const onHour = m % 60 === 0;
               const onHalf = m % 30 === 0;
+              // 午後の先頭スロットの直前に休憩区切り帯を挟む。
+              const insertBreakHere = skipBreak && m === breakBand!.be;
               return (
-                <div
-                  key={m}
-                  className={`flex items-start justify-end pr-1 ${
-                    onHour
-                      ? "border-t border-line/80"
-                      : onHalf
-                        ? "border-t border-line/40"
-                        : "border-t border-line/20"
-                  }`}
-                  style={{ height: cellPx }}
-                >
-                  <span
-                    className={`text-[9px] tabular-nums ${
+                <Fragment key={m}>
+                  {insertBreakHere && (
+                    <div
+                      className="flex items-center justify-end border-y border-line/60 bg-base/60 pr-1 text-[8px] font-medium text-faint"
+                      style={{ height: BREAK_GAP_PX }}
+                    >
+                      休憩
+                    </div>
+                  )}
+                  <div
+                    className={`flex items-start justify-end pr-1 ${
                       onHour
-                        ? "font-semibold text-ink"
+                        ? "border-t border-line/80"
                         : onHalf
-                          ? "text-muted"
-                          : "text-faint"
+                          ? "border-t border-line/40"
+                          : "border-t border-line/20"
                     }`}
+                    style={{ height: cellPx }}
                   >
-                    {fmt(m)}
-                  </span>
-                </div>
+                    <span
+                      className={`text-[9px] tabular-nums ${
+                        onHour
+                          ? "font-semibold text-ink"
+                          : onHalf
+                            ? "text-muted"
+                            : "text-faint"
+                      }`}
+                    >
+                      {fmt(m)}
+                    </span>
+                  </div>
+                </Fragment>
               );
             })}
           </div>
@@ -286,28 +324,26 @@ export function PrintTimeline({
                 className="relative overflow-hidden"
                 style={{
                   height: totalHeight,
-                  background:
-                    "repeating-linear-gradient(0deg, transparent 0 17px, rgba(0,0,0,0.04) 17px 18px)",
+                  background: `repeating-linear-gradient(0deg, transparent 0 ${cellPx - 1}px, rgba(0,0,0,0.04) ${cellPx - 1}px ${cellPx}px)`,
                 }}
               >
-                {/* Break overlay (1日のときだけ; 午前/午後は範囲外なので不要) */}
-                {breakBand && session === "all" && (
+                {/* 休憩区切り帯（時刻列の区切りと位置を合わせる） */}
+                {skipBreak && (
                   <div
-                    className="absolute inset-x-0 pointer-events-none"
-                    style={{
-                      top:
-                        ((breakBand.bs - startMin) / MIN_STEP) * cellPx,
-                      height:
-                        ((breakBand.be - breakBand.bs) / MIN_STEP) * cellPx,
-                      background:
-                        "repeating-linear-gradient(135deg, rgba(155,144,121,0.18) 0 5px, rgba(155,144,121,0.05) 5px 10px)",
-                    }}
+                    className="absolute inset-x-0 border-y border-line/60 bg-base/40 pointer-events-none"
+                    style={{ top: breakGapTop, height: BREAK_GAP_PX }}
                   />
                 )}
 
                 {/* Appointments */}
                 {(() => {
-                const colItems = apptsForColumn(col);
+                const colItems = apptsForColumn(col).filter((r) => {
+                  // 休憩省略時に休憩帯ど真ん中の予約は表示しない（通常起きない想定だが防御的に）。
+                  if (!skipBreak) return true;
+                  const s = jstMinutesOfDay(new Date(r.startAt));
+                  const e = jstMinutesOfDay(new Date(r.endAt));
+                  return !(s >= breakBand!.bs && e <= breakBand!.be);
+                });
                 const laneMap = assignLanes(
                   colItems.map((r) => ({
                     id: r.id,
@@ -321,10 +357,11 @@ export function PrintTimeline({
                 return colItems.map((r) => {
                   const startTotalMin = jstMinutesOfDay(new Date(r.startAt));
                   const endTotalMin = jstMinutesOfDay(new Date(r.endAt));
-                  const top = ((startTotalMin - startMin) / MIN_STEP) * cellPx;
+                  const top = abs2top(startTotalMin);
+                  // 休憩を跨ぐ予約は abs2top の差で高さを取ると、休憩帯ぶんを縮めた見た目になる。
                   const height = Math.max(
                     cellPx - 2,
-                    ((endTotalMin - startTotalMin) / MIN_STEP) * cellPx - 2,
+                    abs2top(endTotalMin) - top - 2,
                   );
                   const lay = laneMap.get(r.id) ?? { lane: 0, lanes: 1 };
                   const leftStyle = `calc(${(lay.lane / lay.lanes) * 100}% + 2px)`;
@@ -371,24 +408,26 @@ export function PrintTimeline({
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
-                        // 15分枠（1行レイアウト）。
-                        // 名前とメモは個別に truncate して、長い名前でもメモが完全に消えないようにする。
-                        <div className="flex items-center gap-1 overflow-hidden">
-                          <span className="shrink-0 font-semibold tabular-nums">
-                            {fmt(startTotalMin)}
-                          </span>
-                          {r.customer?.code && (
-                            <span className="shrink-0 text-[8px] text-muted tabular-nums">
-                              No.{r.customer.code}
+                        // 15分枠。1行目に時刻+No+名前、メモがあれば2行目に表示。
+                        // 縦に入りきらないときは overflow-hidden で下が切れるだけで安全。
+                        <div className="flex flex-col overflow-hidden leading-tight">
+                          <div className="flex items-center gap-1 overflow-hidden">
+                            <span className="shrink-0 font-semibold tabular-nums">
+                              {fmt(startTotalMin)}
                             </span>
-                          )}
-                          <span className="min-w-0 truncate font-medium">
-                            {name}
-                          </span>
+                            {r.customer?.code && (
+                              <span className="shrink-0 text-[8px] text-muted tabular-nums">
+                                No.{r.customer.code}
+                              </span>
+                            )}
+                            <span className="min-w-0 truncate font-medium">
+                              {name}
+                            </span>
+                          </div>
                           {r.note && (
-                            <span className="min-w-0 truncate text-ink/70">
-                              — {r.note}
-                            </span>
+                            <div className="truncate text-[8px] text-ink/70">
+                              {r.note}
+                            </div>
                           )}
                         </div>
                       ) : (
