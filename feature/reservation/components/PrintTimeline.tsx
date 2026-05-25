@@ -31,9 +31,9 @@ type Column = {
 };
 
 // 各セルの基本高さ (px)。1 日表示で 12-13 時間が A4 縦に収まる目安。
-// 午前/午後のみ表示するときはセル高を動的に拡大して同じくらいの紙面を使う。
+// 午前/午後のみ表示するときはセル高を動的に拡大して紙面いっぱいに使う。
 const CELL_PX_BASE = 18;
-const CELL_PX_MAX = 48;
+const CELL_PX_MAX = 80;
 const TIMELINE_TARGET_PX = 1000;
 const MIN_STEP = 15;
 // 休憩時間帯を縦軸から省略するときに挟む区切りの高さ。
@@ -193,7 +193,15 @@ export function PrintTimeline({
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
-          .print-root { padding: 0 !important; max-width: none !important; }
+          .print-root {
+            padding: 0 !important;
+            max-width: none !important;
+            /* カラーの帯/カードを白黒で読みやすく */
+            filter: grayscale(100%);
+            /* グリッド線や淡い背景塗りも紙に出るように */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
 
@@ -243,10 +251,10 @@ export function PrintTimeline({
         </div>
       </div>
 
-      <div className="flex border border-line">
+      <div className="flex border border-ink/50">
         {/* Time column */}
-        <div className="w-12 shrink-0 border-r border-line bg-base/30">
-          <div className="h-7 border-b border-line bg-base text-center text-[10px] font-medium text-muted">
+        <div className="w-12 shrink-0 border-r border-ink/40 bg-base/30">
+          <div className="h-7 border-b border-ink/40 bg-base text-center text-[10px] font-medium text-ink">
             時刻
           </div>
           <div
@@ -262,7 +270,7 @@ export function PrintTimeline({
                 <Fragment key={m}>
                   {insertBreakHere && (
                     <div
-                      className="flex items-center justify-end border-y border-line/60 bg-base/60 pr-1 text-[8px] font-medium text-faint"
+                      className="flex items-center justify-end border-y border-ink/40 bg-base/60 pr-1 text-[8px] font-medium text-ink/70"
                       style={{ height: BREAK_GAP_PX }}
                     >
                       休憩
@@ -271,10 +279,10 @@ export function PrintTimeline({
                   <div
                     className={`flex items-start justify-end pr-1 ${
                       onHour
-                        ? "border-t border-line/80"
+                        ? "border-t border-ink/60"
                         : onHalf
-                          ? "border-t border-line/40"
-                          : "border-t border-line/20"
+                          ? "border-t border-ink/30"
+                          : "border-t border-ink/15"
                     }`}
                     style={{ height: cellPx }}
                   >
@@ -306,9 +314,9 @@ export function PrintTimeline({
           {columns.map((col) => (
             <div
               key={col.key}
-              className="flex-1 border-r border-line last:border-r-0"
+              className="flex-1 border-r border-ink/40 last:border-r-0"
             >
-              <div className="flex h-7 items-center justify-center border-b border-line bg-base px-1 text-center">
+              <div className="flex h-7 items-center justify-center border-b border-ink/40 bg-base px-1 text-center">
                 <span className="flex items-center gap-1 text-[10px] font-medium text-ink">
                   {col.color && (
                     <span
@@ -322,15 +330,42 @@ export function PrintTimeline({
 
               <div
                 className="relative overflow-hidden"
-                style={{
-                  height: totalHeight,
-                  background: `repeating-linear-gradient(0deg, transparent 0 ${cellPx - 1}px, rgba(0,0,0,0.04) ${cellPx - 1}px ${cellPx}px)`,
-                }}
+                style={{ height: totalHeight }}
               >
+                {/* 背景の横線グリッド。
+                    休憩を省く場合は朝/午後を別々に描画して時刻列と線が揃うようにする。 */}
+                {(() => {
+                  const grid = `repeating-linear-gradient(0deg, transparent 0 ${cellPx - 1}px, rgba(0,0,0,0.18) ${cellPx - 1}px ${cellPx}px)`;
+                  if (!skipBreak) {
+                    return (
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ background: grid }}
+                      />
+                    );
+                  }
+                  return (
+                    <>
+                      <div
+                        className="absolute inset-x-0 pointer-events-none"
+                        style={{ top: 0, height: breakGapTop, background: grid }}
+                      />
+                      <div
+                        className="absolute inset-x-0 pointer-events-none"
+                        style={{
+                          top: breakGapTop + BREAK_GAP_PX,
+                          height: totalHeight - breakGapTop - BREAK_GAP_PX,
+                          background: grid,
+                        }}
+                      />
+                    </>
+                  );
+                })()}
+
                 {/* 休憩区切り帯（時刻列の区切りと位置を合わせる） */}
                 {skipBreak && (
                   <div
-                    className="absolute inset-x-0 border-y border-line/60 bg-base/40 pointer-events-none"
+                    className="absolute inset-x-0 border-y border-ink/40 bg-base/40 pointer-events-none"
                     style={{ top: breakGapTop, height: BREAK_GAP_PX }}
                   />
                 )}
@@ -372,17 +407,17 @@ export function PrintTimeline({
                     return (
                       <div
                         key={r.id}
-                        className="absolute overflow-hidden rounded border border-line bg-elevated/70 px-1 py-0.5 text-[9px] text-muted"
+                        className="absolute overflow-hidden rounded border border-ink/60 bg-elevated/70 px-1 py-0.5 text-[9px] text-ink"
                         style={{
                           top,
                           height,
                           left: leftStyle,
                           width: widthStyle,
                           background:
-                            "repeating-linear-gradient(45deg, rgba(155,144,121,0.25) 0 4px, rgba(155,144,121,0.08) 4px 8px)",
+                            "repeating-linear-gradient(45deg, rgba(0,0,0,0.18) 0 4px, rgba(0,0,0,0.06) 4px 8px)",
                         }}
                       >
-                        <div className="truncate font-medium">
+                        <div className="break-words font-medium">
                           {r.blockLabel ?? "時間ブロック"}
                         </div>
                       </div>
@@ -402,16 +437,16 @@ export function PrintTimeline({
                       key={r.id}
                       className={`absolute overflow-hidden rounded border px-1 py-0.5 text-[9px] leading-tight ${
                         cancelled
-                          ? "border-line/40 bg-base/40 text-faint line-through"
-                          : "border-ink/30 bg-white text-ink"
+                          ? "border-ink/40 bg-base/40 text-faint line-through"
+                          : "border-ink/70 bg-white text-ink"
                       }`}
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
                         // 15分枠。1行目に時刻+No+名前、メモがあれば2行目に表示。
-                        // 縦に入りきらないときは overflow-hidden で下が切れるだけで安全。
+                        // 名前・メモは truncate せず、入る範囲で折り返し、はみ出した分は overflow-hidden で切る。
                         <div className="flex flex-col overflow-hidden leading-tight">
-                          <div className="flex items-center gap-1 overflow-hidden">
+                          <div className="flex items-start gap-1 overflow-hidden">
                             <span className="shrink-0 font-semibold tabular-nums">
                               {fmt(startTotalMin)}
                             </span>
@@ -420,12 +455,12 @@ export function PrintTimeline({
                                 No.{r.customer.code}
                               </span>
                             )}
-                            <span className="min-w-0 truncate font-medium">
+                            <span className="min-w-0 break-words font-medium">
                               {name}
                             </span>
                           </div>
                           {r.note && (
-                            <div className="truncate text-[8px] text-ink/70">
+                            <div className="break-words text-[8px] text-ink/70">
                               {r.note}
                             </div>
                           )}
@@ -442,14 +477,14 @@ export function PrintTimeline({
                               </span>
                             )}
                           </div>
-                          <div className="truncate font-medium">{name}</div>
+                          <div className="break-words font-medium">{name}</div>
                           {showMenu && (
-                            <div className="truncate text-[8px] text-muted">
+                            <div className="break-words text-[8px] text-muted">
                               {menuName}
                             </div>
                           )}
                           {r.note && (
-                            <div className="line-clamp-2 text-[8px] text-ink/80">
+                            <div className="break-words text-[8px] text-ink/80">
                               {r.note}
                             </div>
                           )}
