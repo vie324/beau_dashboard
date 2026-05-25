@@ -438,7 +438,7 @@ export function PrintTimeline({
                       className={`absolute overflow-hidden rounded border px-1 py-0.5 text-[9px] leading-tight ${
                         cancelled
                           ? "border-ink/40 bg-base/40 text-faint line-through"
-                          : "border-ink/70 bg-white text-ink"
+                          : "border-ink/70 bg-ink/10 text-ink"
                       }`}
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
