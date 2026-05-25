@@ -1,4 +1,5 @@
 import { db } from "@/helper/lib/db";
+import { compareByCustomerCode } from "@/helper/utils/customerSort";
 
 /**
  * 店舗の顧客一覧 + 来店回数（完了予約 status=2 の件数）+ 最終来店日時。
@@ -7,7 +8,6 @@ import { db } from "@/helper/lib/db";
 export async function getCustomers(shopId: number) {
   const customers = await db.customer.findMany({
     where: { shopId, deletedAt: null },
-    orderBy: [{ kana: "asc" }, { name: "asc" }, { id: "asc" }],
     select: {
       id: true,
       code: true,
@@ -23,6 +23,7 @@ export async function getCustomers(shopId: number) {
       createdAt: true,
     },
   });
+  customers.sort(compareByCustomerCode);
   if (customers.length === 0) return [];
 
   const ids = customers.map((c) => c.id);

@@ -484,7 +484,7 @@ export function StaffWeekBoard({
                           ev.stopPropagation();
                           openCardEdit(r);
                         }}
-                        title={`${minToTime(s)}–${minToTime(e)} ${name}`}
+                        title={`${minToTime(s)}–${minToTime(e)} ${name}${r.note ? `\n${r.note}` : ""}`}
                         className={`absolute z-10 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition-colors hover:z-20 hover:border-accent/70 ${
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
@@ -501,8 +501,9 @@ export function StaffWeekBoard({
                         }}
                       >
                         {height < 36 ? (
-                          // 30分以下のカードは1行に集約（時刻 + No. + 名前）
-                          <div className="flex items-center gap-1 truncate leading-tight">
+                          // 30分以下のカードは1行に集約（時刻 + No. + 名前 + メモ）
+                          // 名前とメモは個別に truncate して、長い名前でもメモが完全に消えないようにする。
+                          <div className="flex items-center gap-1 overflow-hidden leading-tight">
                             <span className="shrink-0 font-semibold tabular-nums text-ink">
                               {minToTime(s)}
                             </span>
@@ -511,9 +512,17 @@ export function StaffWeekBoard({
                                 No.{r.customer.code}
                               </span>
                             )}
-                            <span className="truncate font-medium text-ink">
+                            <span className="min-w-0 truncate font-medium text-ink">
                               {name}
                             </span>
+                            {r.note && (
+                              <span
+                                className="min-w-0 truncate text-faint"
+                                title={r.note}
+                              >
+                                — {r.note}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <>

@@ -8,6 +8,7 @@ import { CustomerForm } from "@/feature/customer/components/CustomerForm";
 import { CustomerImportModal } from "@/feature/customer/components/CustomerImportModal";
 import { deleteCustomer } from "@/feature/customer/actions/customerActions";
 import type { CustomerRow } from "@/feature/customer/services/getCustomers";
+import { filterCustomersByQuery } from "@/helper/utils/customerSort";
 
 const dateFmt = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
@@ -32,18 +33,10 @@ export function CustomersClient({
   const [importing, setImporting] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.kana ?? "").toLowerCase().includes(q) ||
-        (c.phone ?? "").toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q) ||
-        (c.code ?? "").toLowerCase().includes(q),
-    );
-  }, [customers, query]);
+  const filtered = useMemo(
+    () => filterCustomersByQuery(customers, query),
+    [customers, query],
+  );
 
   function handleDelete(c: CustomerRow) {
     if (!confirm(`「${c.name}」を削除しますか？（過去の予約履歴は残ります）`)) {
@@ -70,7 +63,7 @@ export function CustomersClient({
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="氏名・カナ・電話・メール・患者番号で検索"
+          placeholder="患者番号・氏名・カナ・メールで検索（電話番号も可）"
           className="sm:max-w-sm"
         />
         <div className="flex shrink-0 items-center gap-3">

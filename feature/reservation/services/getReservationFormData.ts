@@ -1,4 +1,5 @@
 import { db } from "@/helper/lib/db";
+import { compareByCustomerCode } from "@/helper/utils/customerSort";
 
 /** Master data needed to render the appointment form for a shop. */
 export async function getReservationFormData(shopId: number) {
@@ -38,7 +39,6 @@ export async function getReservationFormData(shopId: number) {
     }),
     db.customer.findMany({
       where: { shopId, deletedAt: null },
-      orderBy: [{ kana: "asc" }, { name: "asc" }, { id: "asc" }],
       select: { id: true, code: true, name: true, kana: true, phone: true },
     }),
     db.visitSource.findMany({
@@ -47,6 +47,8 @@ export async function getReservationFormData(shopId: number) {
       select: { id: true, name: true },
     }),
   ]);
+
+  customers.sort(compareByCustomerCode);
 
   return { staffs, equipments, menus, customers, visitSources };
 }

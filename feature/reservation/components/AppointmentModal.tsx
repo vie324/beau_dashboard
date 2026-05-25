@@ -8,6 +8,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { STATUS_OPTIONS } from "@/helper/utils/status";
 import { timeSlots } from "@/helper/utils/timeOptions";
 import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
+import { filterCustomersByQuery } from "@/helper/utils/customerSort";
 
 const TIME_SLOTS_15 = timeSlots(15);
 import { appointmentSchema } from "@/feature/reservation/schema/reservationSchema";
@@ -713,17 +714,10 @@ function CustomerCombobox({
     [customers, selectedId],
   );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.kana ?? "").toLowerCase().includes(q) ||
-        (c.phone ?? "").toLowerCase().includes(q) ||
-        (c.code ?? "").toLowerCase().includes(q),
-    );
-  }, [customers, query]);
+  const filtered = useMemo(
+    () => filterCustomersByQuery(customers, query),
+    [customers, query],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -746,7 +740,7 @@ function CustomerCombobox({
       <Input
         type="text"
         value={display}
-        placeholder="氏名・カナ・電話・患者番号で検索"
+        placeholder="患者番号・氏名・カナで検索（電話番号も可）"
         onFocus={() => {
           setOpen(true);
           setQuery("");

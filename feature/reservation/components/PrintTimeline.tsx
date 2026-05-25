@@ -371,7 +371,9 @@ export function PrintTimeline({
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
-                        <div className="flex items-center gap-1 truncate">
+                        // 15分枠（1行レイアウト）。
+                        // 名前とメモは個別に truncate して、長い名前でもメモが完全に消えないようにする。
+                        <div className="flex items-center gap-1 overflow-hidden">
                           <span className="shrink-0 font-semibold tabular-nums">
                             {fmt(startTotalMin)}
                           </span>
@@ -380,10 +382,14 @@ export function PrintTimeline({
                               No.{r.customer.code}
                             </span>
                           )}
-                          <span className="truncate font-medium">
+                          <span className="min-w-0 truncate font-medium">
                             {name}
-                            {r.note ? ` — ${r.note}` : ""}
                           </span>
+                          {r.note && (
+                            <span className="min-w-0 truncate text-ink/70">
+                              — {r.note}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <>
