@@ -430,3 +430,76 @@ export async function deleteTimeBlock(id: number): Promise<ActionResult> {
   revalidatePath("/reservation");
   return { ok: true };
 }
+
+/**
+ * 既存の予約 (または時間ブロック) を、長さを変えずに別の時刻/担当へ移動する。
+ * カレンダー上のドラッグ&ドロップ操作のためのエンドポイント。
+ * メニュー・顧客などその他の項目は触らない (細かな編集はモーダルから)。
+ */
+export async function moveReservation(input: {
+  id: number;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:mm
+  // 移動先列のスタッフID。undefined なら据え置き、null は「指名なし」へ。
+  staffId?: number | null;
+}): Promise<ActionResult> {
+  if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
+  const shopId = await getActiveShopId();
+
+  const existing = await db.appointment.findFirst({
+    where: { id: input.id, shopId, deletedAt: null },
+    select: {
+      id: true,
+      startAt: true,
+      endAt: true,
+      staffId: true,
+      equipmentId: true,
+    },
+  });
+  if (!existing) return { ok: false, error: "予約が見つかりません" };
+
+  const durationMin = Math.max(
+    15,
+    Math.round((existing.endAt.getTime() - existing.startAt.getTime()) / 60000),
+  );
+  const newStartAt = jstDateTimeToDate(input.date, input.startTime);
+  const newEndAt = addMinutes(newStartAt, durationMin);
+  const newStaffId =
+    input.staffId === undefined ? existing.staffId : input.staffId;
+
+  if (newStaffId) {
+    const avail = await checkStaffAvailability({
+      shopId,
+      staffId: newStaffId,
+      startAt: newStartAt,
+      endAt: newEndAt,
+      excludeAppointmentId: input.id,
+    });
+    if (!avail.available) {
+      return { ok: false, error: "移動先の時間帯に別の予約があります" };
+    }
+  }
+  if (existing.equipmentId) {
+    const avail = await checkEquipmentAvailability({
+      shopId,
+      equipmentId: existing.equipmentId,
+      startAt: newStartAt,
+      endAt: newEndAt,
+      excludeAppointmentId: input.id,
+    });
+    if (!avail.available) {
+      return { ok: false, error: "移動先の時間帯に対象設備が埋まっています" };
+    }
+  }
+
+  try {
+    await db.appointment.update({
+      where: { id: input.id },
+      data: { startAt: newStartAt, endAt: newEndAt, staffId: newStaffId },
+    });
+  } catch {
+    return { ok: false, error: "保存に失敗しました" };
+  }
+  revalidatePath("/reservation");
+  return { ok: true };
+}

@@ -35,6 +35,7 @@ function minToTime(min: number): string {
  * Google カレンダー風の縦タイムライン表示。
  * 縦軸=時間、横軸=スタッフ/設備の列。重なる予約は列内でレーン分割して横並び。
  * - カードのクリックで編集
+ * - カードをドラッグ&ドロップで時刻/担当を変更（離した位置で onCardDrop 通知）
  * - 空き部分のクリックで新規予約
  * - 空き部分を縦にドラッグ（引き伸ばし）で時間ブロックを作成
  */
@@ -50,6 +51,7 @@ export function DayCalendar({
   onCardClick,
   onEmptyClick,
   onDragCreate,
+  onCardDrop,
 }: {
   date: string;
   today: string;
@@ -65,6 +67,11 @@ export function DayCalendar({
     staffId: number | null,
     startTime: string,
     durationMin: number,
+  ) => void;
+  onCardDrop?: (
+    row: ReservationRow,
+    newStartMin: number,
+    col: Col,
   ) => void;
 }) {
   const totalH = (endMin - startMin) * PX_PER_MIN;
@@ -91,6 +98,106 @@ export function DayCalendar({
     endMin: number;
   } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // 既存カードをドラッグして時刻・担当を変更するためのフック (PCのみ)。
+  const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const cardDragRef = useRef<{
+    row: ReservationRow;
+    startClientX: number;
+    startClientY: number;
+    moved: boolean;
+  } | null>(null);
+  const [cardDragPreview, setCardDragPreview] = useState<{
+    row: ReservationRow;
+    newStartMin: number;
+    newColKey: string;
+  } | null>(null);
+  const cardSuppressClickRef = useRef(false);
+
+  const getColAtClientX = (clientX: number): Col | null => {
+    for (const c of cols) {
+      const el = columnRefs.current[c.key];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right) return c;
+    }
+    return null;
+  };
+
+  const onCardMouseDown =
+    (row: ReservationRow) => (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return;
+      // 列の onMouseDown (空き部分のドラッグ作成) を発火させない
+      e.stopPropagation();
+      if (!onCardDrop) return;
+      cardDragRef.current = {
+        row,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        moved: false,
+      };
+      const compute = (ev: MouseEvent) => {
+        const targetCol = getColAtClientX(ev.clientX);
+        if (!targetCol) return null;
+        const targetEl = columnRefs.current[targetCol.key];
+        if (!targetEl) return null;
+        const colRect = targetEl.getBoundingClientRect();
+        const y = ev.clientY - colRect.top;
+        const rawT = startMin + y / PX_PER_MIN;
+        const snappedT = Math.max(
+          startMin,
+          Math.min(endMin - 15, Math.round(rawT / 15) * 15),
+        );
+        return { col: targetCol, newStartMin: snappedT };
+      };
+      const onMove = (ev: MouseEvent) => {
+        const d = cardDragRef.current;
+        if (!d) return;
+        if (
+          !d.moved &&
+          Math.hypot(
+            ev.clientX - d.startClientX,
+            ev.clientY - d.startClientY,
+          ) < 5
+        )
+          return;
+        d.moved = true;
+        const next = compute(ev);
+        if (!next) return;
+        setCardDragPreview({
+          row: d.row,
+          newStartMin: next.newStartMin,
+          newColKey: next.col.key,
+        });
+      };
+      const onUp = (ev: MouseEvent) => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        const d = cardDragRef.current;
+        cardDragRef.current = null;
+        setCardDragPreview(null);
+        if (!d) return;
+        if (!d.moved) return;
+        // ドラッグ直後に発火しうるクリックを全部抑制する
+        // (同列内ドラッグでは列の onClick (= 新規予約モーダル) が、
+        //  カード内に戻ってマウスアップした場合はカードの onClick が、
+        //  それぞれ走るので両方の suppress ref を立てる)。
+        cardSuppressClickRef.current = true;
+        suppressClickRef.current = true;
+        // 100ms 後に確実にクリアする保険。click が一度も走らなかった場合
+        // (例えば 2 つの列をまたいで離して、共通祖先で click が消化された等) に
+        // 次の正規クリックを巻き込まないようにするため。
+        setTimeout(() => {
+          cardSuppressClickRef.current = false;
+          suppressClickRef.current = false;
+        }, 100);
+        const next = compute(ev);
+        if (!next) return;
+        onCardDrop(d.row, next.newStartMin, next.col);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    };
 
   const byCol = (c: Col) =>
     reservations.filter((r) => {
@@ -173,6 +280,9 @@ export function DayCalendar({
             return (
               <div
                 key={col.key}
+                ref={(el) => {
+                  columnRefs.current[col.key] = el;
+                }}
                 className="relative flex-1 cursor-copy border-r border-line last:border-r-0"
                 style={{ minWidth: MIN_COL_W, height: totalH }}
                 onMouseDown={(e) => {
@@ -307,6 +417,33 @@ export function DayCalendar({
                   </div>
                 )}
 
+                {/* Card drag-to-move ghost (移動先プレビュー) */}
+                {cardDragPreview &&
+                  cardDragPreview.newColKey === col.key &&
+                  (() => {
+                    const durMin = Math.max(
+                      15,
+                      jstMinutes(cardDragPreview.row.endAt) -
+                        jstMinutes(cardDragPreview.row.startAt),
+                    );
+                    return (
+                      <div
+                        className="pointer-events-none absolute inset-x-1 z-30 rounded-md border-2 border-accent bg-accent/25 shadow-md"
+                        style={{
+                          top:
+                            (cardDragPreview.newStartMin - startMin) *
+                            PX_PER_MIN,
+                          height: durMin * PX_PER_MIN - 2,
+                        }}
+                      >
+                        <span className="m-1 inline-block rounded bg-accent px-1 py-0.5 text-[10px] font-semibold leading-none text-accent-fg tabular-nums">
+                          {minToTime(cardDragPreview.newStartMin)}–
+                          {minToTime(cardDragPreview.newStartMin + durMin)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                 {/* Cards */}
                 {items.map((r) => {
                   const s = jstMinutes(r.startAt);
@@ -320,18 +457,25 @@ export function DayCalendar({
                   const leftStyle = `calc(${(lay.lane / lay.lanes) * 100}% + 2px)`;
                   const widthStyle = `calc(${(1 / lay.lanes) * 100}% - 4px)`;
 
+                  const beingDragged = cardDragPreview?.row.id === r.id;
                   if (r.kind === "block") {
                     const label = r.blockLabel ?? "時間ブロック";
                     return (
                       <button
                         key={r.id}
-                        onMouseDown={(ev) => ev.stopPropagation()}
+                        onMouseDown={onCardMouseDown(r)}
                         onClick={(ev) => {
                           ev.stopPropagation();
+                          if (cardSuppressClickRef.current) {
+                            cardSuppressClickRef.current = false;
+                            return;
+                          }
                           onCardClick(r);
                         }}
                         title={`${minToTime(s)}–${minToTime(e)} ${label}`}
-                        className="absolute z-10 overflow-hidden rounded-md border border-line px-1.5 py-0.5 text-left text-[10px] text-muted transition-colors hover:z-20 hover:border-accent/70"
+                        className={`absolute z-10 overflow-hidden rounded-md border border-line px-1.5 py-0.5 text-left text-[10px] text-muted transition-colors hover:z-20 hover:border-accent/70 ${
+                          onCardDrop ? "cursor-grab active:cursor-grabbing" : ""
+                        } ${beingDragged ? "opacity-40" : ""}`}
                         style={{
                           top,
                           height,
@@ -360,9 +504,13 @@ export function DayCalendar({
                   return (
                     <button
                       key={r.id}
-                      onMouseDown={(ev) => ev.stopPropagation()}
+                      onMouseDown={onCardMouseDown(r)}
                       onClick={(ev) => {
                         ev.stopPropagation();
+                        if (cardSuppressClickRef.current) {
+                          cardSuppressClickRef.current = false;
+                          return;
+                        }
                         onCardClick(r);
                       }}
                       title={`${minToTime(s)}–${minToTime(e)} ${name}${r.note ? `\n${r.note}` : ""}`}
@@ -370,7 +518,9 @@ export function DayCalendar({
                         cancelled
                           ? "border-line bg-elevated/60 opacity-60"
                           : "border-line bg-elevated"
-                      } ${!r.confirmed && !cancelled ? "ring-1 ring-warn" : ""}`}
+                      } ${!r.confirmed && !cancelled ? "ring-1 ring-warn" : ""} ${
+                        onCardDrop ? "cursor-grab active:cursor-grabbing" : ""
+                      } ${beingDragged ? "opacity-40" : ""}`}
                       style={{
                         top,
                         height,

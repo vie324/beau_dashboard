@@ -12,6 +12,10 @@ import { DateNav } from "@/feature/reservation/components/DateNav";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
 import { DayCalendar } from "@/feature/reservation/components/DayCalendar";
+import {
+  MoveConfirmModal,
+  type MoveTarget,
+} from "@/feature/reservation/components/MoveConfirmModal";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import type { ReservationOptimisticAction } from "@/feature/reservation/types/optimistic";
@@ -100,6 +104,8 @@ export function ReservationBoard({
       }
     | { kind: "block"; mode: "edit"; row: ReservationRow };
   const [modal, setModal] = useState<ModalState | null>(null);
+  // 予約カードのドラッグ&ドロップ後に表示する移動確認モーダルの対象。
+  const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null);
 
   const openCardEdit = (r: ReservationRow) =>
     setModal(
@@ -341,6 +347,16 @@ export function ReservationBoard({
               kind: "block",
               mode: "create",
               prefill: { staffId: staffId ?? undefined, startTime, durationMin },
+            })
+          }
+          onCardDrop={(row, newStartMin, col) =>
+            setMoveTarget({
+              row,
+              date,
+              newStartMin,
+              newStaffId: col.staffId,
+              newStaffName: col.name,
+              newStaffColor: col.color ?? null,
             })
           }
         />
@@ -845,6 +861,12 @@ export function ReservationBoard({
           onOptimistic={applyOptimistic}
         />
       )}
+      <MoveConfirmModal
+        open={moveTarget != null}
+        target={moveTarget}
+        onClose={() => setMoveTarget(null)}
+        onOptimistic={applyOptimistic}
+      />
       {modal?.kind === "block" && (
         <TimeBlockModal
           key={
