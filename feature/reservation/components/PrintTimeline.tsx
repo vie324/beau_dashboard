@@ -38,6 +38,9 @@ const TIMELINE_TARGET_PX = 1000;
 const MIN_STEP = 15;
 // 休憩時間帯を縦軸から省略するときに挟む区切りの高さ。
 const BREAK_GAP_PX = 18;
+// 1日表示でも休憩開始からこの分数のスロットまでは描画する (= 休憩前半に取った予約を残すため)。
+// それ以降の休憩スロットだけ省略する。
+const BREAK_SHOW_MIN = 90;
 
 function parseHm(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -109,19 +112,28 @@ export function PrintTimeline({
     return { startMin: start, endMin: end };
   }, [shopHours, reservations, session, breakBand]);
 
-  // 「1日」表示で営業時間内に休憩がある場合は、休憩帯を縦軸から省略して
+  // 「1日」表示で営業時間内に休憩がある場合は、休憩帯の後半を縦軸から省略して
   // 残りの時間を大きく表示する。午前/午後セッションでは既に範囲が休憩で切られている。
-  const skipBreak = session === "all" && breakBand != null;
-  const breakDuration = skipBreak ? breakBand!.be - breakBand!.bs : 0;
+  // 休憩開始から BREAK_SHOW_MIN 分のスロットラベルまでは描画する
+  // (例: 12:00 休憩開始 + 90 分 → 13:30 のスロットも見える)。
+  // 短い休憩 (1.5 時間以下) は省略不要で全部表示される。
+  const breakSkipStart = breakBand
+    ? Math.min(breakBand.bs + BREAK_SHOW_MIN + MIN_STEP, breakBand.be)
+    : 0;
+  const skipBreak =
+    session === "all" &&
+    breakBand != null &&
+    breakSkipStart < breakBand.be;
+  const breakDuration = skipBreak ? breakBand!.be - breakSkipStart : 0;
 
   const timeSlots = useMemo(() => {
     const arr: number[] = [];
     for (let m = startMin; m < endMin; m += MIN_STEP) {
-      if (skipBreak && m >= breakBand!.bs && m < breakBand!.be) continue;
+      if (skipBreak && m >= breakSkipStart && m < breakBand!.be) continue;
       arr.push(m);
     }
     return arr;
-  }, [startMin, endMin, skipBreak, breakBand]);
+  }, [startMin, endMin, skipBreak, breakBand, breakSkipStart]);
 
   const columns: Column[] = useMemo(() => {
     const cols: Column[] = formData.staffs.map((s) => ({
@@ -183,9 +195,9 @@ export function PrintTimeline({
     return ((abs - startMin) / MIN_STEP) * cellPx;
   };
 
-  // 休憩区切り帯の上端位置（朝の最後のスロットの直下）。
+  // 休憩区切り帯の上端位置（描画する最後の休憩スロットの直下）。
   const breakGapTop = skipBreak
-    ? ((breakBand!.bs - startMin) / MIN_STEP) * cellPx
+    ? ((breakSkipStart - startMin) / MIN_STEP) * cellPx
     : 0;
 
   return (
@@ -375,11 +387,12 @@ export function PrintTimeline({
                 {/* Appointments */}
                 {(() => {
                 const colItems = apptsForColumn(col).filter((r) => {
-                  // 休憩省略時に休憩帯ど真ん中の予約は表示しない（通常起きない想定だが防御的に）。
+                  // 描画する休憩スロットより後の (省略される) 範囲に完全に収まる予約だけ除外。
+                  // 休憩前半 (breakStart 〜 breakSkipStart) に取った予約は引き続き描画する。
                   if (!skipBreak) return true;
                   const s = jstMinutesOfDay(new Date(r.startAt));
                   const e = jstMinutesOfDay(new Date(r.endAt));
-                  return !(s >= breakBand!.bs && e <= breakBand!.be);
+                  return !(s >= breakSkipStart && e <= breakBand!.be);
                 });
                 const laneMap = assignLanes(
                   colItems.map((r) => ({
