@@ -64,7 +64,7 @@ export function DayCalendar({
   onCardClick: (r: ReservationRow) => void;
   onEmptyClick: (staffId: number | null, startTime: string) => void;
   onDragCreate: (
-    staffId: number | null,
+    target: { staffId: number | null; equipmentId: number | null },
     startTime: string,
     durationMin: number,
   ) => void;
@@ -83,10 +83,12 @@ export function DayCalendar({
     date === today && nowMin != null && nowMin >= startMin && nowMin <= endMin;
 
   // 縦ドラッグで時間ブロックを作成（PCのみ）。横タイムラインと同じ操作感。
+  // スタッフ列ならスタッフブロック、設備列なら設備ブロックを作成する。
   const dragRef = useRef<{
     startClientY: number;
     colEl: HTMLElement;
     staffId: number | null;
+    equipmentId: number | null;
     colKey: string;
     a: number;
     b: number;
@@ -345,8 +347,9 @@ export function DayCalendar({
                   // ＋ FAB / 時間ブロックボタンを使う前提とする。
                   if (e.pointerType !== "mouse") return;
                   if (e.button !== 0) return;
-                  // 設備列・「指名なし」列は対象スタッフが無いためドラッグ作成不可。
-                  if (col.staffId == null) return;
+                  // 「指名なし」列 (staffId/equipmentId 共に null) のみドラッグ作成不可。
+                  // スタッフ列・設備列はそれぞれの種類のブロックを作成できる。
+                  if (col.staffId == null && col.equipmentId == null) return;
                   const colEl = e.currentTarget as HTMLElement;
                   const rect = colEl.getBoundingClientRect();
                   const y0 = e.clientY - rect.top;
@@ -359,6 +362,7 @@ export function DayCalendar({
                     startClientY: e.clientY,
                     colEl,
                     staffId: col.staffId,
+                    equipmentId: col.equipmentId,
                     colKey: col.key,
                     a,
                     b: a,
@@ -400,7 +404,14 @@ export function DayCalendar({
                       const hi = Math.max(d.a, d.b);
                       const duration = Math.max(15, hi - lo);
                       suppressClickRef.current = true;
-                      onDragCreate(d.staffId, minToTime(lo), duration);
+                      onDragCreate(
+                        {
+                          staffId: d.staffId,
+                          equipmentId: d.equipmentId,
+                        },
+                        minToTime(lo),
+                        duration,
+                      );
                     }
                     setDragSel(null);
                   };

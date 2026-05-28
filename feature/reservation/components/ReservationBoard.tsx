@@ -98,6 +98,7 @@ export function ReservationBoard({
         mode: "create";
         prefill?: {
           staffId?: number;
+          equipmentId?: number;
           startTime?: string;
           durationMin?: number;
         };
@@ -114,11 +115,13 @@ export function ReservationBoard({
         : { kind: "appointment", mode: "edit", row: r },
     );
 
-  // ドラッグで時間ブロックを作成する（PCのみ。スマホは「＋ 時間ブロック」ボタンを使用）
+  // ドラッグで時間ブロックを作成する（PCのみ。スマホは「＋ 時間ブロック」ボタンを使用）。
+  // スタッフ行ならスタッフブロック、設備行なら設備ブロックを作る。
   const dragRef = useRef<{
     startClientX: number;
     laneEl: HTMLElement;
     staffId: number | null;
+    equipmentId: number | null;
     rowKey: string;
     a: number; // 起点分（スナップ済み）
     b: number; // 現在分（スナップ済み）
@@ -382,11 +385,16 @@ export function ReservationBoard({
                 prefill: { staffId: staffId ?? undefined, startTime },
               })
             }
-            onDragCreate={(staffId, startTime, durationMin) =>
+            onDragCreate={(target, startTime, durationMin) =>
               setModal({
                 kind: "block",
                 mode: "create",
-                prefill: { staffId: staffId ?? undefined, startTime, durationMin },
+                prefill: {
+                  staffId: target.staffId ?? undefined,
+                  equipmentId: target.equipmentId ?? undefined,
+                  startTime,
+                  durationMin,
+                },
               })
             }
             onCardDrop={(row, newStartMin, col) =>
@@ -512,8 +520,9 @@ export function ReservationBoard({
                   style={{ width: totalW }}
                   onMouseDown={(e) => {
                     if (e.button !== 0) return;
-                    // 「指名なし」行は対象スタッフが無いためドラッグ作成不可
-                    if (row.staffId == null) return;
+                    // 「指名なし」行 (staffId/equipmentId 共に null) のみドラッグ作成不可。
+                    // スタッフ行・設備行はそれぞれの種類のブロックを作成できる。
+                    if (row.staffId == null && row.equipmentId == null) return;
                     const laneEl = e.currentTarget as HTMLElement;
                     const rect = laneEl.getBoundingClientRect();
                     const x0 = e.clientX - rect.left;
@@ -526,6 +535,7 @@ export function ReservationBoard({
                       startClientX: e.clientX,
                       laneEl,
                       staffId: row.staffId,
+                      equipmentId: row.equipmentId,
                       rowKey: row.key,
                       a,
                       b: a,
@@ -570,6 +580,7 @@ export function ReservationBoard({
                           mode: "create",
                           prefill: {
                             staffId: d.staffId ?? undefined,
+                            equipmentId: d.equipmentId ?? undefined,
                             startTime: minToTime(lo),
                             durationMin: duration,
                           },
@@ -962,12 +973,13 @@ export function ReservationBoard({
           key={
             modal.mode === "edit"
               ? `be${modal.row.id}`
-              : `bc${modal.prefill?.startTime ?? ""}-${modal.prefill?.staffId ?? ""}`
+              : `bc${modal.prefill?.startTime ?? ""}-${modal.prefill?.staffId ?? ""}-${modal.prefill?.equipmentId ?? ""}`
           }
           open
           onClose={() => setModal(null)}
           date={date}
           staffs={formData.staffs}
+          equipments={formData.equipments}
           initial={modal.mode === "edit" ? modal.row : null}
           prefill={modal.mode === "create" ? modal.prefill : undefined}
           onOptimistic={applyOptimistic}
