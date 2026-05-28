@@ -140,18 +140,37 @@ export function ReservationBoard({
     return () => clearInterval(id);
   }, []);
 
-  // 表示モード: timeline=横軸が時間 / day=縦軸が時間（Googleカレンダー風）。
-  // 端末ごとの好みを localStorage に保存して次回も維持する。
-  const [viewMode, setViewMode] = useState<"timeline" | "day">("timeline");
+  // 表示モードは PC とスマホで独立。
+  //   PC:   timeline (横軸=時間) / day (縦軸=時間, Googleカレンダー風)
+  //   スマホ: list (時刻順カードリスト) / day (縦タイムライン)
+  // それぞれ localStorage に保存して次回も維持。
+  const [desktopView, setDesktopView] = useState<"timeline" | "day">(
+    "timeline",
+  );
+  const [mobileView, setMobileView] = useState<"list" | "day">("list");
   useEffect(() => {
-    const v = localStorage.getItem("beau_reservation_view");
-    if (v === "day" || v === "timeline") setViewMode(v);
+    // 旧キー(beau_reservation_view) は PC の好みとしてフォールバック移行する。
+    const legacy = localStorage.getItem("beau_reservation_view");
+    const d = localStorage.getItem("beau_reservation_view_desktop") ?? legacy;
+    if (d === "day" || d === "timeline") setDesktopView(d);
+    const m = localStorage.getItem("beau_reservation_view_mobile");
+    if (m === "day" || m === "list") setMobileView(m);
   }, []);
-  const toggleView = () =>
-    setViewMode((m) => {
+  const toggleDesktopView = () =>
+    setDesktopView((m) => {
       const next = m === "timeline" ? "day" : "timeline";
       try {
-        localStorage.setItem("beau_reservation_view", next);
+        localStorage.setItem("beau_reservation_view_desktop", next);
+      } catch {
+        // localStorage 不可の環境では保存しない（表示自体は機能する）
+      }
+      return next;
+    });
+  const toggleMobileView = () =>
+    setMobileView((m) => {
+      const next = m === "list" ? "day" : "list";
+      try {
+        localStorage.setItem("beau_reservation_view_mobile", next);
       } catch {
         // localStorage 不可の環境では保存しない（表示自体は機能する）
       }
@@ -275,14 +294,25 @@ export function ReservationBoard({
             size="sm"
             variant="outline"
             className="hidden sm:inline-flex"
-            onClick={toggleView}
+            onClick={toggleDesktopView}
             title={
-              viewMode === "timeline"
+              desktopView === "timeline"
                 ? "縦表示（時間が縦軸）に切り替え"
                 : "横表示（時間が横軸）に切り替え"
             }
           >
-            {viewMode === "timeline" ? "縦表示" : "横表示"}
+            {desktopView === "timeline" ? "縦表示" : "横表示"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="sm:hidden"
+            onClick={toggleMobileView}
+            title={
+              mobileView === "list" ? "1日表示に切り替え" : "リスト表示に切り替え"
+            }
+          >
+            {mobileView === "list" ? "1日表示" : "リスト表示"}
           </Button>
           <Button
             size="sm"
@@ -308,6 +338,7 @@ export function ReservationBoard({
           </Button>
           <Button
             size="sm"
+            className="hidden sm:inline-flex"
             onClick={() =>
               setModal({ kind: "appointment", mode: "create" })
             }
@@ -324,47 +355,57 @@ export function ReservationBoard({
         </p>
       )}
 
-      {viewMode === "day" && (
-        <DayCalendar
-          date={date}
-          today={today}
-          reservations={reservations}
-          cols={rows}
-          startMin={startMin}
-          endMin={endMin}
-          breakBand={breakBand}
-          nowMin={nowMin}
-          onCardClick={openCardEdit}
-          onEmptyClick={(staffId, startTime) =>
-            setModal({
-              kind: "appointment",
-              mode: "create",
-              prefill: { staffId: staffId ?? undefined, startTime },
-            })
+      {(desktopView === "day" || mobileView === "day") && (
+        <div
+          className={
+            desktopView === "day" && mobileView === "day"
+              ? ""
+              : desktopView === "day"
+                ? "hidden sm:block"
+                : "block sm:hidden"
           }
-          onDragCreate={(staffId, startTime, durationMin) =>
-            setModal({
-              kind: "block",
-              mode: "create",
-              prefill: { staffId: staffId ?? undefined, startTime, durationMin },
-            })
-          }
-          onCardDrop={(row, newStartMin, col) =>
-            setMoveTarget({
-              row,
-              date,
-              newStartMin,
-              newStaffId: col.staffId,
-              newStaffName: col.name,
-              newStaffColor: col.color ?? null,
-            })
-          }
-        />
+        >
+          <DayCalendar
+            date={date}
+            today={today}
+            reservations={reservations}
+            cols={rows}
+            startMin={startMin}
+            endMin={endMin}
+            breakBand={breakBand}
+            nowMin={nowMin}
+            onCardClick={openCardEdit}
+            onEmptyClick={(staffId, startTime) =>
+              setModal({
+                kind: "appointment",
+                mode: "create",
+                prefill: { staffId: staffId ?? undefined, startTime },
+              })
+            }
+            onDragCreate={(staffId, startTime, durationMin) =>
+              setModal({
+                kind: "block",
+                mode: "create",
+                prefill: { staffId: staffId ?? undefined, startTime, durationMin },
+              })
+            }
+            onCardDrop={(row, newStartMin, col) =>
+              setMoveTarget({
+                row,
+                date,
+                newStartMin,
+                newStaffId: col.staffId,
+                newStaffName: col.name,
+                newStaffColor: col.color ?? null,
+              })
+            }
+          />
+        </div>
       )}
 
       <div
         className={`overflow-x-auto rounded-xl border border-line bg-surface shadow-panel ${
-          viewMode === "timeline" ? "hidden sm:block" : "hidden"
+          desktopView === "timeline" ? "hidden sm:block" : "hidden"
         }`}
       >
         <div style={{ width: STAFF_W + totalW, minWidth: "100%" }}>
@@ -721,121 +762,157 @@ export function ReservationBoard({
         </div>
       </div>
 
-      {/* スマホ専用: 予約を時間順の縦リストで表示（PCは上の横グリッド） */}
-      <div className="sm:hidden">
+      {/* スマホ専用: 予約を時刻順の縦リストで表示。時間帯ごとにヘッダーを挟む */}
+      <div
+        className={
+          mobileView === "list" ? "pb-24 sm:hidden sm:pb-0" : "hidden"
+        }
+      >
         {reservations.length === 0 ? (
           <p className="rounded-xl border border-line bg-surface px-4 py-10 text-center text-sm text-faint shadow-panel">
-            この日の予約はありません。「＋ 新規予約」から追加できます。
+            この日の予約はありません。右下の「＋ 新規予約」から追加できます。
           </p>
         ) : (
-          <ul className="divide-y divide-line/70 overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
-            {reservations.map((r) => {
-              const s = jstMinutes(r.startAt);
-              const e = jstMinutes(r.endAt);
-              const staffName = r.staff?.name ?? "指名なし";
-              if (r.kind === "block") {
-                const label = r.blockLabel ?? "時間ブロック";
-                return (
-                  <li key={r.id}>
-                    <button
-                      onClick={() => openCardEdit(r)}
-                      className="flex w-full items-stretch gap-3 px-4 py-3 text-left text-muted transition-colors active:bg-elevated/60"
-                      style={{
-                        background:
-                          "repeating-linear-gradient(45deg, rgba(155,144,121,0.18) 0 6px, rgba(155,144,121,0.05) 6px 12px)",
-                      }}
+          (() => {
+            // 時間帯（時）でグループ化。空き時間帯は表示しない。
+            const groups: { hour: number; items: ReservationRow[] }[] = [];
+            for (const r of reservations) {
+              const h = Math.floor(jstMinutes(r.startAt) / 60);
+              const last = groups[groups.length - 1];
+              if (last && last.hour === h) last.items.push(r);
+              else groups.push({ hour: h, items: [r] });
+            }
+            return (
+              <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
+                {groups.map(({ hour, items }, gi) => (
+                  <div key={hour}>
+                    <div
+                      className={`flex items-baseline justify-between bg-elevated/50 px-4 py-1.5 text-[11px] font-semibold tracking-wide text-muted ${
+                        gi > 0 ? "border-t border-line" : ""
+                      }`}
                     >
-                      <span className="w-1 shrink-0 self-stretch rounded-full bg-faint/60" />
-                      <div className="w-12 shrink-0">
-                        <div className="text-sm font-semibold tabular-nums text-ink">
-                          {minToTime(s)}
-                        </div>
-                        <div className="text-[11px] tabular-nums text-faint">
-                          {minToTime(e)}
-                        </div>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-ink">
-                          {label}
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted">
-                          {staffName}
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                );
-              }
-              const meta = statusMeta(r.status);
-              const cancelled = [3, 4, 99].includes(r.status);
-              const name =
-                r.customer?.name ?? r.guestName ?? "（名称未設定）";
-              return (
-                <li key={r.id}>
-                  <button
-                    onClick={() => openCardEdit(r)}
-                    className={`flex w-full items-stretch gap-3 px-4 py-3 text-left transition-colors active:bg-elevated/60 ${
-                      cancelled ? "opacity-60" : ""
-                    } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""}`}
-                  >
-                    <span
-                      className="w-1 shrink-0 self-stretch rounded-full"
-                      style={{
-                        background:
-                          r.visitSource?.labelTextColor ?? "#d8b06a",
-                      }}
-                    />
-                    <div className="w-12 shrink-0">
-                      <div className="text-sm font-semibold tabular-nums text-ink">
-                        {minToTime(s)}
-                      </div>
-                      <div className="text-[11px] tabular-nums text-faint">
-                        {minToTime(e)}
-                      </div>
+                      <span className="tabular-nums">
+                        {String(hour).padStart(2, "0")}:00 〜
+                      </span>
+                      <span className="font-normal text-faint">
+                        {items.length} 件
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        {r.customer?.code && (
-                          <span className="shrink-0 text-xs text-faint tabular-nums">
-                            No.{r.customer.code}
-                          </span>
-                        )}
-                        <span className="truncate font-medium text-ink">
-                          {name}
-                        </span>
-                        {!r.confirmed && !cancelled && (
-                          <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold text-warn">
-                            未確認
-                          </span>
-                        )}
-                      </div>
-                      {r.menu && (
-                        <div className="mt-0.5 truncate text-xs text-faint">
-                          {r.menu.name}
-                        </div>
-                      )}
-                      <div className="mt-1 flex items-center gap-2">
-                        {r.staff?.color && (
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-line"
-                            style={{ background: r.staff.color ?? undefined }}
-                          />
-                        )}
-                        <span className="truncate text-xs text-muted">
-                          {staffName}
-                        </span>
-                      </div>
-                    </div>
-                    <Badge
-                      className={`${meta.className} shrink-0 self-start whitespace-nowrap`}
-                    >
-                      {meta.label}
-                    </Badge>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                    <ul className="divide-y divide-line/70">
+                      {items.map((r) => {
+                        const s = jstMinutes(r.startAt);
+                        const e = jstMinutes(r.endAt);
+                        const staffName = r.staff?.name ?? "指名なし";
+                        if (r.kind === "block") {
+                          const label = r.blockLabel ?? "時間ブロック";
+                          return (
+                            <li key={r.id}>
+                              <button
+                                onClick={() => openCardEdit(r)}
+                                className="flex w-full items-stretch gap-3 px-4 py-3.5 text-left text-muted transition-colors active:bg-elevated/60"
+                                style={{
+                                  background:
+                                    "repeating-linear-gradient(45deg, rgba(155,144,121,0.18) 0 6px, rgba(155,144,121,0.05) 6px 12px)",
+                                }}
+                              >
+                                <span className="w-1 shrink-0 self-stretch rounded-full bg-faint/60" />
+                                <div className="w-12 shrink-0">
+                                  <div className="text-sm font-semibold tabular-nums text-ink">
+                                    {minToTime(s)}
+                                  </div>
+                                  <div className="text-[11px] tabular-nums text-faint">
+                                    {minToTime(e)}
+                                  </div>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate font-medium text-ink">
+                                    {label}
+                                  </div>
+                                  <div className="mt-1 truncate text-xs text-muted">
+                                    {staffName}
+                                  </div>
+                                </div>
+                              </button>
+                            </li>
+                          );
+                        }
+                        const meta = statusMeta(r.status);
+                        const cancelled = [3, 4, 99].includes(r.status);
+                        const name =
+                          r.customer?.name ?? r.guestName ?? "（名称未設定）";
+                        return (
+                          <li key={r.id}>
+                            <button
+                              onClick={() => openCardEdit(r)}
+                              className={`flex w-full items-stretch gap-3 px-4 py-3.5 text-left transition-colors active:bg-elevated/60 ${
+                                cancelled ? "opacity-60" : ""
+                              } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""}`}
+                            >
+                              <span
+                                className="w-1 shrink-0 self-stretch rounded-full"
+                                style={{
+                                  background:
+                                    r.visitSource?.labelTextColor ?? "#d8b06a",
+                                }}
+                              />
+                              <div className="w-12 shrink-0">
+                                <div className="text-sm font-semibold tabular-nums text-ink">
+                                  {minToTime(s)}
+                                </div>
+                                <div className="text-[11px] tabular-nums text-faint">
+                                  {minToTime(e)}
+                                </div>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  {r.customer?.code && (
+                                    <span className="shrink-0 text-xs text-faint tabular-nums">
+                                      No.{r.customer.code}
+                                    </span>
+                                  )}
+                                  <span className="truncate font-medium text-ink">
+                                    {name}
+                                  </span>
+                                  {!r.confirmed && !cancelled && (
+                                    <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold text-warn">
+                                      未確認
+                                    </span>
+                                  )}
+                                </div>
+                                {r.menu && (
+                                  <div className="mt-0.5 truncate text-xs text-faint">
+                                    {r.menu.name}
+                                  </div>
+                                )}
+                                <div className="mt-1 flex items-center gap-2">
+                                  {r.staff?.color && (
+                                    <span
+                                      className="h-2 w-2 shrink-0 rounded-full ring-1 ring-line"
+                                      style={{
+                                        background: r.staff.color ?? undefined,
+                                      }}
+                                    />
+                                  )}
+                                  <span className="truncate text-xs text-muted">
+                                    {staffName}
+                                  </span>
+                                </div>
+                              </div>
+                              <Badge
+                                className={`${meta.className} shrink-0 self-start whitespace-nowrap`}
+                              >
+                                {meta.label}
+                              </Badge>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            );
+          })()
         )}
       </div>
 
@@ -844,6 +921,19 @@ export function ReservationBoard({
           この日の予約はありません。タイムラインをクリックして追加できます。
         </p>
       )}
+
+      {/* FAB（スマホ専用）: 親指リーチを優先した「＋ 新規予約」の主要動線。
+          画面のどこからでもタップできる。PC は上部のボタンを使う。 */}
+      <button
+        type="button"
+        onClick={() => setModal({ kind: "appointment", mode: "create" })}
+        aria-label="新規予約を作成"
+        className="fixed bottom-5 right-5 z-30 flex items-center gap-1.5 rounded-full bg-accent px-5 py-3.5 text-sm font-semibold text-accent-fg shadow-lg shadow-black/20 transition-transform active:scale-95 sm:hidden"
+        style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        <span className="text-base leading-none">＋</span>
+        <span>新規予約</span>
+      </button>
 
       {modal?.kind === "appointment" && (
         <AppointmentModal

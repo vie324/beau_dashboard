@@ -99,7 +99,11 @@ export function DayCalendar({
   } | null>(null);
   const suppressClickRef = useRef(false);
 
-  // 既存カードをドラッグして時刻・担当を変更するためのフック (PCのみ)。
+  // 既存カードをドラッグして時刻・担当を変更するためのフック。
+  // マウス: 即時ドラッグ (5px 以上動いたら開始)
+  // タッチ: 350ms 長押しで「持ち上げ」→ ドラッグ。長押し前に動いたらキャンセル
+  //         (スクロールを優先したいため)。カードには touch-action: none を当てている
+  //         ので、長押し成立後はブラウザにスクロールを奪われない。
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardDragRef = useRef<{
     row: ReservationRow;
@@ -124,25 +128,58 @@ export function DayCalendar({
     return null;
   };
 
-  const onCardMouseDown =
-    (row: ReservationRow) => (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (e.button !== 0) return;
-      // 列の onMouseDown (空き部分のドラッグ作成) を発火させない
+  const onCardPointerDown =
+    (row: ReservationRow) => (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      // 列の onPointerDown (空き部分のドラッグ作成) を発火させない
       e.stopPropagation();
       if (!onCardDrop) return;
+
+      const isTouch = e.pointerType === "touch";
+      const cardEl = e.currentTarget;
+      const pointerId = e.pointerId;
+
+      let started = !isTouch; // マウス/ペンは即時ドラッグ開始可能 / タッチは長押し待ち
+      let cancelled = false;
+      let timerId: number | null = null;
+
       cardDragRef.current = {
         row,
         startClientX: e.clientX,
         startClientY: e.clientY,
         moved: false,
       };
-      const compute = (ev: MouseEvent) => {
-        const targetCol = getColAtClientX(ev.clientX);
+
+      const lift = () => {
+        if (cancelled) return;
+        started = true;
+        cardEl.style.transition = "transform 100ms ease-out";
+        cardEl.style.transform = "scale(1.04)";
+        cardEl.style.zIndex = "40";
+        if (
+          isTouch &&
+          typeof navigator !== "undefined" &&
+          "vibrate" in navigator
+        ) {
+          try {
+            navigator.vibrate(15);
+          } catch {
+            // 振動非対応端末は無視
+          }
+        }
+      };
+
+      if (isTouch) {
+        timerId = window.setTimeout(lift, 350);
+      }
+
+      const compute = (clientX: number, clientY: number) => {
+        const targetCol = getColAtClientX(clientX);
         if (!targetCol) return null;
         const targetEl = columnRefs.current[targetCol.key];
         if (!targetEl) return null;
         const colRect = targetEl.getBoundingClientRect();
-        const y = ev.clientY - colRect.top;
+        const y = clientY - colRect.top;
         const rawT = startMin + y / PX_PER_MIN;
         const snappedT = Math.max(
           startMin,
@@ -150,19 +187,41 @@ export function DayCalendar({
         );
         return { col: targetCol, newStartMin: snappedT };
       };
-      const onMove = (ev: MouseEvent) => {
+
+      const cleanup = () => {
+        if (timerId != null) {
+          window.clearTimeout(timerId);
+          timerId = null;
+        }
+        cardEl.style.transition = "";
+        cardEl.style.transform = "";
+        cardEl.style.zIndex = "";
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
         const d = cardDragRef.current;
         if (!d) return;
-        if (
-          !d.moved &&
-          Math.hypot(
-            ev.clientX - d.startClientX,
-            ev.clientY - d.startClientY,
-          ) < 5
-        )
+        const dx = ev.clientX - d.startClientX;
+        const dy = ev.clientY - d.startClientY;
+        const dist = Math.hypot(dx, dy);
+
+        if (!started) {
+          // タッチで長押し成立前に動いた → スクロール優先でキャンセル
+          if (dist > 8) {
+            cancelled = true;
+            cardDragRef.current = null;
+            cleanup();
+          }
           return;
+        }
+
+        if (!d.moved && dist < 5) return;
         d.moved = true;
-        const next = compute(ev);
+        const next = compute(ev.clientX, ev.clientY);
         if (!next) return;
         setCardDragPreview({
           row: d.row,
@@ -170,33 +229,29 @@ export function DayCalendar({
           newColKey: next.col.key,
         });
       };
-      const onUp = (ev: MouseEvent) => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
         const d = cardDragRef.current;
         cardDragRef.current = null;
         setCardDragPreview(null);
-        if (!d) return;
-        if (!d.moved) return;
+        cleanup();
+        if (!d || !started || !d.moved) return;
         // ドラッグ直後に発火しうるクリックを全部抑制する
-        // (同列内ドラッグでは列の onClick (= 新規予約モーダル) が、
-        //  カード内に戻ってマウスアップした場合はカードの onClick が、
-        //  それぞれ走るので両方の suppress ref を立てる)。
         cardSuppressClickRef.current = true;
         suppressClickRef.current = true;
-        // 100ms 後に確実にクリアする保険。click が一度も走らなかった場合
-        // (例えば 2 つの列をまたいで離して、共通祖先で click が消化された等) に
-        // 次の正規クリックを巻き込まないようにするため。
         setTimeout(() => {
           cardSuppressClickRef.current = false;
           suppressClickRef.current = false;
         }, 100);
-        const next = compute(ev);
+        const next = compute(ev.clientX, ev.clientY);
         if (!next) return;
         onCardDrop(d.row, next.newStartMin, next.col);
       };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
     };
 
   const byCol = (c: Col) =>
@@ -209,7 +264,7 @@ export function DayCalendar({
 
   return (
     <div
-      className="hidden overflow-auto rounded-xl border border-line bg-surface shadow-panel sm:block"
+      className="overflow-auto rounded-xl border border-line bg-surface shadow-panel"
       style={{ maxHeight: "72vh" }}
     >
       <div style={{ minWidth: GUTTER_W + cols.length * MIN_COL_W }}>
@@ -285,7 +340,10 @@ export function DayCalendar({
                 }}
                 className="relative flex-1 cursor-copy border-r border-line last:border-r-0"
                 style={{ minWidth: MIN_COL_W, height: totalH }}
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
+                  // 空き部分のドラッグ作成はマウスのみ。タッチではタップで新規予約モーダル、
+                  // ＋ FAB / 時間ブロックボタンを使う前提とする。
+                  if (e.pointerType !== "mouse") return;
                   if (e.button !== 0) return;
                   // 設備列・「指名なし」列は対象スタッフが無いためドラッグ作成不可。
                   if (col.staffId == null) return;
@@ -306,7 +364,8 @@ export function DayCalendar({
                     b: a,
                     moved: false,
                   };
-                  const onMove = (ev: MouseEvent) => {
+                  const onMove = (ev: PointerEvent) => {
+                    if (ev.pointerType !== "mouse") return;
                     const d = dragRef.current;
                     if (!d) return;
                     if (
@@ -329,9 +388,10 @@ export function DayCalendar({
                       endMin: Math.max(d.a, d.b),
                     });
                   };
-                  const onUp = () => {
-                    document.removeEventListener("mousemove", onMove);
-                    document.removeEventListener("mouseup", onUp);
+                  const onUp = (ev: PointerEvent) => {
+                    if (ev.pointerType !== "mouse") return;
+                    document.removeEventListener("pointermove", onMove);
+                    document.removeEventListener("pointerup", onUp);
                     const d = dragRef.current;
                     dragRef.current = null;
                     if (!d) return;
@@ -344,8 +404,8 @@ export function DayCalendar({
                     }
                     setDragSel(null);
                   };
-                  document.addEventListener("mousemove", onMove);
-                  document.addEventListener("mouseup", onUp);
+                  document.addEventListener("pointermove", onMove);
+                  document.addEventListener("pointerup", onUp);
                 }}
                 onClick={(e) => {
                   if (suppressClickRef.current) {
@@ -463,7 +523,7 @@ export function DayCalendar({
                     return (
                       <button
                         key={r.id}
-                        onMouseDown={onCardMouseDown(r)}
+                        onPointerDown={onCardPointerDown(r)}
                         onClick={(ev) => {
                           ev.stopPropagation();
                           if (cardSuppressClickRef.current) {
@@ -481,6 +541,7 @@ export function DayCalendar({
                           height,
                           left: leftStyle,
                           width: widthStyle,
+                          touchAction: onCardDrop ? "none" : undefined,
                           background:
                             "repeating-linear-gradient(45deg, rgba(155,144,121,0.22) 0 6px, rgba(155,144,121,0.08) 6px 12px)",
                         }}
@@ -504,7 +565,7 @@ export function DayCalendar({
                   return (
                     <button
                       key={r.id}
-                      onMouseDown={onCardMouseDown(r)}
+                      onPointerDown={onCardPointerDown(r)}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         if (cardSuppressClickRef.current) {
@@ -526,6 +587,7 @@ export function DayCalendar({
                         height,
                         left: leftStyle,
                         width: widthStyle,
+                        touchAction: onCardDrop ? "none" : undefined,
                         borderLeftWidth: 3,
                         borderLeftColor:
                           r.visitSource?.labelTextColor ?? "#d8b06a",
