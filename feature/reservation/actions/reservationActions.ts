@@ -307,10 +307,21 @@ export async function saveTimeBlock(
   if (input.id) {
     const existing = await db.appointment.findFirst({
       where: { id: input.id, shopId, deletedAt: null, kind: "block" },
-      select: { id: true, staffId: true },
+      select: { id: true, staffId: true, equipmentId: true },
     });
     if (!existing) return { ok: false, error: "ブロックが見つかりません" };
-    if (existing.staffId) {
+    if (existing.equipmentId) {
+      const avail = await checkEquipmentAvailability({
+        shopId,
+        equipmentId: existing.equipmentId,
+        startAt,
+        endAt,
+        excludeAppointmentId: input.id,
+      });
+      if (!avail.available) {
+        return { ok: false, error: "他の予約と時間が重なります" };
+      }
+    } else if (existing.staffId) {
       const avail = await checkStaffAvailability({
         shopId,
         staffId: existing.staffId,
@@ -329,6 +340,41 @@ export async function saveTimeBlock(
       });
     } catch {
       return { ok: false, error: "保存に失敗しました" };
+    }
+    revalidatePath("/reservation");
+    return { ok: true };
+  }
+
+  // 新規: 設備ブロック (設備列でドラッグ作成された場合)。「全設備」のような複数同時作成は無し。
+  if (input.equipmentId) {
+    const avail = await checkEquipmentAvailability({
+      shopId,
+      equipmentId: input.equipmentId,
+      startAt,
+      endAt,
+    });
+    if (!avail.available) {
+      return {
+        ok: false,
+        error: "この設備はこの時間帯に他の予約があります",
+      };
+    }
+    try {
+      await db.appointment.create({
+        data: {
+          shopId,
+          equipmentId: input.equipmentId,
+          startAt,
+          endAt,
+          kind: "block",
+          blockLabel: input.label ?? null,
+          status: 0,
+          source: "manual",
+          confirmed: true,
+        },
+      });
+    } catch {
+      return { ok: false, error: "作成に失敗しました" };
     }
     revalidatePath("/reservation");
     return { ok: true };
@@ -429,6 +475,52 @@ export async function deleteTimeBlock(id: number): Promise<ActionResult> {
   }
   revalidatePath("/reservation");
   return { ok: true };
+}
+
+/**
+ * 指定顧客の「前回の施術」情報を返す。施術メモを画面に呼び起こすために使う。
+ * 「前回」= 現時点より前で、キャンセル/ノーショーでない最新の予約 (kind="appointment")。
+ * 編集中の予約自身は除外する。該当が無ければ null。
+ */
+export async function getCustomerLastNote(
+  customerId: number,
+  excludeAppointmentId?: number,
+): Promise<{
+  reservationId: number;
+  startAt: Date;
+  menuName: string | null;
+  staffName: string | null;
+  note: string | null;
+} | null> {
+  if (!(await getCurrentUser())) return null;
+  const shopId = await getActiveShopId();
+  const prev = await db.appointment.findFirst({
+    where: {
+      shopId,
+      customerId,
+      deletedAt: null,
+      kind: "appointment",
+      status: { notIn: FREEING_STATUSES },
+      startAt: { lt: new Date() },
+      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+    },
+    orderBy: { startAt: "desc" },
+    select: {
+      id: true,
+      startAt: true,
+      note: true,
+      menu: { select: { name: true } },
+      staff: { select: { name: true } },
+    },
+  });
+  if (!prev) return null;
+  return {
+    reservationId: prev.id,
+    startAt: prev.startAt,
+    menuName: prev.menu?.name ?? null,
+    staffName: prev.staff?.name ?? null,
+    note: prev.note,
+  };
 }
 
 /**

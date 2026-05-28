@@ -11,11 +11,19 @@ import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
 import { filterCustomersByQuery } from "@/helper/utils/customerSort";
 
 const TIME_SLOTS_15 = timeSlots(15);
+
+const prevDateFmt = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 import { appointmentSchema } from "@/feature/reservation/schema/reservationSchema";
 import {
   saveAppointment,
   deleteAppointment,
   setAppointmentConfirmed,
+  getCustomerLastNote,
 } from "@/feature/reservation/actions/reservationActions";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/optimistic";
@@ -117,6 +125,44 @@ export function AppointmentModal({
   const [custMode, setCustMode] = useState<"existing" | "new">(
     initial?.customerId ? "existing" : initial?.guestName ? "new" : "existing",
   );
+
+  // 「前回の施術メモ」: 顧客選択中の場合に、その顧客の直近の予約(=前回)を取ってくる。
+  // 編集中の予約自身は除外する。新規予約・新規顧客の場合は null のまま。
+  type PrevNote = {
+    reservationId: number;
+    startAt: Date;
+    menuName: string | null;
+    staffName: string | null;
+    note: string | null;
+  };
+  const [prevNote, setPrevNote] = useState<PrevNote | null>(null);
+  const [prevNoteLoading, setPrevNoteLoading] = useState(false);
+  const selectedCustomerId =
+    custMode === "existing" && form.customerId !== ""
+      ? Number(form.customerId)
+      : null;
+  useEffect(() => {
+    if (selectedCustomerId == null) {
+      setPrevNote(null);
+      return;
+    }
+    let active = true;
+    setPrevNoteLoading(true);
+    getCustomerLastNote(selectedCustomerId, initial?.id)
+      .then((r) => {
+        if (!active) return;
+        setPrevNote(r);
+      })
+      .catch(() => {
+        if (active) setPrevNote(null);
+      })
+      .finally(() => {
+        if (active) setPrevNoteLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedCustomerId, initial?.id]);
 
   const set = <K extends keyof typeof form>(
     key: K,
@@ -523,6 +569,49 @@ export function AppointmentModal({
                 </option>
               ))}
             </Select>
+          </div>
+        )}
+
+        {selectedCustomerId != null && (
+          <div className="rounded-xl border border-line bg-base/40 px-3 py-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-semibold text-muted">
+                前回の施術メモ
+              </span>
+              {prevNote?.note && (
+                <button
+                  type="button"
+                  onClick={() => set("note", prevNote.note ?? "")}
+                  className="text-[11px] text-accent underline-offset-2 hover:underline"
+                >
+                  今回のメモにコピー
+                </button>
+              )}
+            </div>
+            {prevNoteLoading ? (
+              <p className="mt-1 text-xs text-faint">読み込み中…</p>
+            ) : !prevNote ? (
+              <p className="mt-1 text-xs text-faint">
+                この患者の過去の予約はありません
+              </p>
+            ) : (
+              <>
+                <div className="mt-1 text-[11px] text-faint">
+                  {prevDateFmt.format(new Date(prevNote.startAt))}
+                  {prevNote.menuName ? ` ・ ${prevNote.menuName}` : ""}
+                  {prevNote.staffName ? ` ・ ${prevNote.staffName}` : ""}
+                </div>
+                {prevNote.note ? (
+                  <p className="mt-1.5 whitespace-pre-wrap text-xs text-ink">
+                    {prevNote.note}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs italic text-faint">
+                    （前回はメモなし）
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
 
