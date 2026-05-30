@@ -197,6 +197,8 @@ model Appointment {
   status        Int          @default(0)
   sales         Int?
   note          String?
+  // カードの背景色（手動で色分け）。未設定なら既定色を使う。
+  cardColor     String?
   isMemberJoin  Boolean      @default(false)
   // manual | public
   source        String       @default("manual")

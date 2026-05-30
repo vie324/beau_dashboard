@@ -177,6 +177,7 @@ async function upsert(
     status: input.status,
     sales: input.sales ?? null,
     note: input.note ?? null,
+    cardColor: input.cardColor ?? null,
   };
 
   try {

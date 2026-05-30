@@ -8,7 +8,7 @@ import { jstMinutesOfDay } from "@/helper/utils/time";
 import { assignLanes } from "@/helper/utils/laneLayout";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 
-const PX_PER_MIN = 1; // 縦軸の高さ（1分=1px → 1時間=60px）
+const PX_PER_MIN = 2; // 縦軸の高さ（1分=2px → 1時間=120px / 15分=30px）
 const MIN_COL_W = 150; // 列（スタッフ/設備）の最小幅。列が少なければ幅いっぱいに広がる。
 const GUTTER_W = 56; // 左の時刻目盛り幅
 const HEAD_H = 36;
@@ -78,6 +78,12 @@ export function DayCalendar({
 
   const hours: number[] = [];
   for (let m = Math.ceil(startMin / 60) * 60; m <= endMin; m += 60) hours.push(m);
+
+  // 15分ごとの目盛り（正時は hours 側で描くので :15 :30 :45 のみ）。
+  const quarters: number[] = [];
+  for (let m = Math.ceil(startMin / 15) * 15; m <= endMin; m += 15) {
+    if (m % 60 !== 0) quarters.push(m);
+  }
 
   const showNow =
     date === today && nowMin != null && nowMin >= startMin && nowMin <= endMin;
@@ -316,7 +322,16 @@ export function DayCalendar({
             {hours.map((m) => (
               <div
                 key={m}
-                className="absolute right-1 -translate-y-1/2 text-[11px] tabular-nums text-faint"
+                className="absolute right-1 -translate-y-1/2 text-[11px] font-medium tabular-nums text-faint"
+                style={{ top: (m - startMin) * PX_PER_MIN }}
+              >
+                {minToTime(m)}
+              </div>
+            ))}
+            {quarters.map((m) => (
+              <div
+                key={`q${m}`}
+                className="absolute right-1 -translate-y-1/2 text-[10px] tabular-nums text-faint opacity-60"
                 style={{ top: (m - startMin) * PX_PER_MIN }}
               >
                 {minToTime(m)}
@@ -440,6 +455,14 @@ export function DayCalendar({
                   <div
                     key={m}
                     className="absolute inset-x-0 border-t border-line/40"
+                    style={{ top: (m - startMin) * PX_PER_MIN }}
+                  />
+                ))}
+                {/* Quarter-hour gridlines（15分の薄い線） */}
+                {quarters.map((m) => (
+                  <div
+                    key={`q${m}`}
+                    className="pointer-events-none absolute inset-x-0 border-t border-line/20"
                     style={{ top: (m - startMin) * PX_PER_MIN }}
                   />
                 ))}
@@ -599,6 +622,7 @@ export function DayCalendar({
                         left: leftStyle,
                         width: widthStyle,
                         touchAction: onCardDrop ? "none" : undefined,
+                        background: r.cardColor || undefined,
                         borderLeftWidth: 3,
                         borderLeftColor:
                           r.visitSource?.labelTextColor ?? "#d8b06a",

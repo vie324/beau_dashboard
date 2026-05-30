@@ -120,6 +120,7 @@ export function AppointmentModal({
     status: initial?.status ?? 0,
     sales: initial?.sales ?? "",
     note: initial?.note ?? "",
+    cardColor: initial?.cardColor ?? "",
   });
 
   const [custMode, setCustMode] = useState<"existing" | "new">(
@@ -210,6 +211,7 @@ export function AppointmentModal({
       status: form.status,
       sales: form.sales === "" ? null : Number(form.sales),
       note: form.note || null,
+      cardColor: form.cardColor || null,
       isMemberJoin: initial?.isMemberJoin ?? false,
       source: initial?.source ?? "manual",
       confirmed: initial?.confirmed ?? true,
@@ -251,6 +253,7 @@ export function AppointmentModal({
       status: form.status,
       sales: form.sales === "" ? undefined : form.sales,
       note: form.note || undefined,
+      cardColor: form.cardColor || undefined,
     };
 
     const parsed = appointmentSchema.safeParse(payload);
@@ -614,6 +617,34 @@ export function AppointmentModal({
             )}
           </div>
         )}
+
+        <div>
+          <Label>背景色</Label>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="color"
+              value={form.cardColor || "#d8b06a"}
+              onChange={(e) => set("cardColor", e.target.value)}
+              className="h-9 w-12 shrink-0 cursor-pointer rounded-lg border border-line bg-base p-1"
+              aria-label="予約カードの背景色"
+            />
+            <span className="text-sm tabular-nums text-muted">
+              {form.cardColor ? form.cardColor : "デフォルト（自動）"}
+            </span>
+            {form.cardColor && (
+              <button
+                type="button"
+                onClick={() => set("cardColor", "")}
+                className="text-xs text-accent underline-offset-2 hover:underline"
+              >
+                デフォルトに戻す
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-faint">
+            予約カードの背景色を自由に変更できます（顧客側には表示されません）。
+          </p>
+        </div>
 
         <div>
           <Label>メモ</Label>
