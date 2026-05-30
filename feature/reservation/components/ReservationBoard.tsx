@@ -729,6 +729,7 @@ export function ReservationBoard({
                           width,
                           top: cardTop,
                           height: laneH,
+                          background: r.cardColor || undefined,
                           borderLeftWidth: 3,
                           borderLeftColor:
                             r.visitSource?.labelTextColor ?? "#d8b06a",
@@ -858,6 +859,7 @@ export function ReservationBoard({
                               className={`flex w-full items-stretch gap-3 px-4 py-3.5 text-left transition-colors active:bg-elevated/60 ${
                                 cancelled ? "opacity-60" : ""
                               } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""}`}
+                              style={{ background: r.cardColor || undefined }}
                             >
                               <span
                                 className="w-1 shrink-0 self-stretch rounded-full"
