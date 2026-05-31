@@ -42,12 +42,20 @@ if (hasDbUrl) {
   if (isPooler && !direct) {
     // Pooler 経由では DDL が不安定なため schema sync をスキップ。
     // スキーマは Supabase SQL Editor で管理するか、DIRECT_URL を設定する。
-    console.log(
-      "[beau] DATABASE_URL is a connection pooler (PgBouncer/Supavisor). " +
+    //
+    // 注意: ここをスキップすると、スキーマに列を足した PR をデプロイしても
+    // 本番DBに反映されず、Prisma が存在しない列を参照して P2022 等で
+    // 実行時エラーになる（画面はエラー境界に落ちる）。新しい列・テーブルを
+    // 追加した場合は、必ず Supabase SQL Editor で手動 DDL を流すか、
+    // DIRECT_URL を設定して build 時 sync を有効にすること。
+    console.warn(
+      "[beau] ⚠️ DATABASE_URL is a connection pooler (PgBouncer/Supavisor). " +
         "Skipping `prisma db push` and seed — DDL is unreliable through the " +
-        "transaction pooler. Manage schema via Supabase SQL Editor, or set " +
-        "DIRECT_URL (Session pooler / direct connection) to re-enable schema " +
-        "sync at build time.",
+        "transaction pooler. If this deploy adds/changes schema (new columns " +
+        "or tables), apply the DDL manually in the Supabase SQL Editor, or " +
+        "set DIRECT_URL (Session pooler / direct connection) to re-enable " +
+        "schema sync at build time. Otherwise the app may hit runtime errors " +
+        "for missing columns.",
     );
   } else {
     const pushEnv = direct
