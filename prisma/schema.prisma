@@ -73,6 +73,7 @@ model Shop {
   appointments      Appointment[]
   visitSources      VisitSource[]
   equipments        Equipment[]
+  cardColorPresets  CardColorPreset[]
 }
 
 // 設備（楽トレ・水素吸引機 等）。スタッフの代わりにメニューの「リソース」として
@@ -180,6 +181,23 @@ model VisitSource {
   deletedAt      DateTime?
   shop           Shop          @relation(fields: [shopId], references: [id])
   appointments   Appointment[]
+}
+
+// 予約カードの背景色プリセット（店舗ごとに名前付きで色を保存）。
+// 予約モーダルから「現在の色を保存」して、後で他の予約に再利用できる。
+// Appointment.cardColor とは参照関係を持たず、選択時に hex 文字列を
+// コピーする（プリセットを後から編集しても既存予約の色は変わらない）。
+model CardColorPreset {
+  id         Int      @id @default(autoincrement())
+  shopId     Int
+  name       String
+  hexColor   String
+  sortNumber Int      @default(0)
+  createdAt  DateTime @default(now())
+  deletedAt  DateTime?
+  shop       Shop     @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
 }
 
 model Appointment {

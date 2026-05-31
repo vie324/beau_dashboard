@@ -25,6 +25,7 @@ import {
   setAppointmentConfirmed,
   getCustomerLastNote,
 } from "@/feature/reservation/actions/reservationActions";
+import { saveCardColorPreset, deleteCardColorPreset } from "@/feature/settings/actions/settingsActions";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/optimistic";
 
@@ -54,6 +55,7 @@ type FormData = {
     phone: string | null;
   }[];
   visitSources: { id: number; name: string }[];
+  cardColorPresets: { id: number; name: string; hexColor: string }[];
 };
 
 export function AppointmentModal({
@@ -618,33 +620,11 @@ export function AppointmentModal({
           </div>
         )}
 
-        <div>
-          <Label>背景色</Label>
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              type="color"
-              value={form.cardColor || "#d8b06a"}
-              onChange={(e) => set("cardColor", e.target.value)}
-              className="h-9 w-12 shrink-0 cursor-pointer rounded-lg border border-line bg-base p-1"
-              aria-label="予約カードの背景色"
-            />
-            <span className="text-sm tabular-nums text-muted">
-              {form.cardColor ? form.cardColor : "デフォルト（自動）"}
-            </span>
-            {form.cardColor && (
-              <button
-                type="button"
-                onClick={() => set("cardColor", "")}
-                className="text-xs text-accent underline-offset-2 hover:underline"
-              >
-                デフォルトに戻す
-              </button>
-            )}
-          </div>
-          <p className="mt-1 text-[11px] text-faint">
-            予約カードの背景色を自由に変更できます（顧客側には表示されません）。
-          </p>
-        </div>
+        <CardColorPicker
+          value={form.cardColor}
+          onChange={(v) => set("cardColor", v)}
+          presets={formData.cardColorPresets}
+        />
 
         <div>
           <Label>メモ</Label>
@@ -696,6 +676,187 @@ export function AppointmentModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * 予約カードの背景色ピッカー。
+ *  - 任意の色をカラーピッカーで選べる（既存の挙動）
+ *  - 保存済みプリセット（CardColorPreset）をチップ表示し、タップで適用
+ *  - 「現在の色を保存」で名前を付けて新規プリセット登録（モーダル外と即時連携）
+ *  - チップ長押し（または ✕）で削除
+ *
+ * プリセットは router.refresh() でサーバから再取得する（formData は server
+ * component 側で next の revalidate を介して更新される）。
+ */
+function CardColorPicker({
+  value,
+  onChange,
+  presets,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  presets: { id: number; name: string; hexColor: string }[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const trimmed = (value ?? "").trim();
+  const hasValue = trimmed.length > 0;
+
+  function savePreset() {
+    setErr(null);
+    const hex = trimmed || "#d8b06a";
+    const name = presetName.trim();
+    if (!name) {
+      setErr("名前を入力してください");
+      return;
+    }
+    const fd = new globalThis.FormData();
+    fd.set("name", name);
+    fd.set("hexColor", hex);
+    startTransition(async () => {
+      const r = await saveCardColorPreset(null, fd);
+      if (r.ok) {
+        setPresetName("");
+        setSaving(false);
+        router.refresh();
+      } else {
+        setErr(r.error);
+      }
+    });
+  }
+
+  function removePreset(id: number) {
+    if (!confirm("この色プリセットを削除しますか？")) return;
+    startTransition(async () => {
+      const r = await deleteCardColorPreset(id);
+      if (r.ok) router.refresh();
+      else setErr(r.error);
+    });
+  }
+
+  return (
+    <div>
+      <Label>背景色</Label>
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="color"
+          value={trimmed || "#d8b06a"}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-12 shrink-0 cursor-pointer rounded-lg border border-line bg-base p-1"
+          aria-label="予約カードの背景色"
+        />
+        <span className="text-sm tabular-nums text-muted">
+          {hasValue ? trimmed : "デフォルト（自動）"}
+        </span>
+        {hasValue && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="text-xs text-accent underline-offset-2 hover:underline"
+          >
+            デフォルトに戻す
+          </button>
+        )}
+        {hasValue && !saving && (
+          <button
+            type="button"
+            onClick={() => setSaving(true)}
+            className="text-xs text-accent underline-offset-2 hover:underline"
+          >
+            現在の色を保存
+          </button>
+        )}
+      </div>
+
+      {saving && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-base/40 px-3 py-2">
+          <span
+            className="h-5 w-5 shrink-0 rounded border border-line"
+            style={{ background: trimmed || "#d8b06a" }}
+          />
+          <Input
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder="名前（例: 新規さん / 要相談）"
+            className="!h-8 max-w-[16rem]"
+            maxLength={40}
+            autoFocus
+          />
+          <Button size="sm" onClick={savePreset} disabled={pending}>
+            {pending ? "保存中…" : "保存"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setSaving(false);
+              setPresetName("");
+              setErr(null);
+            }}
+            className="text-xs text-muted underline-offset-2 hover:underline"
+            disabled={pending}
+          >
+            キャンセル
+          </button>
+        </div>
+      )}
+
+      {presets.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {presets.map((p) => {
+            const selected =
+              trimmed.toLowerCase() === p.hexColor.toLowerCase();
+            return (
+              <span
+                key={p.id}
+                className={`inline-flex items-center gap-1.5 rounded-full border bg-surface py-1 pl-1 pr-2 text-xs transition-colors ${
+                  selected
+                    ? "border-accent/70 ring-1 ring-accent/30"
+                    : "border-line hover:border-accent/60"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => onChange(p.hexColor)}
+                  className="inline-flex items-center gap-1.5"
+                  title={`${p.name} (${p.hexColor})`}
+                >
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-line"
+                    style={{ background: p.hexColor }}
+                  />
+                  <span className="text-ink">{p.name}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removePreset(p.id)}
+                  className="text-faint hover:text-danger"
+                  aria-label={`${p.name} を削除`}
+                  disabled={pending}
+                >
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {err && (
+        <p className="mt-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+          {err}
+        </p>
+      )}
+
+      <p className="mt-1 text-[11px] text-faint">
+        予約カードの背景色を自由に変更できます。保存しておくと「予約枠の色」として
+        いつでも再利用できます（顧客側には表示されません）。
+      </p>
+    </div>
   );
 }
 
