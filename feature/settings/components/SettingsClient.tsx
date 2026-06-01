@@ -78,6 +78,8 @@ import {
   saveVisitSource,
   deleteVisitSource,
   ensureDefaultVisitSources,
+  saveCardColorPreset,
+  deleteCardColorPreset,
   type ActionResult,
 } from "@/feature/settings/actions/settingsActions";
 import type {
@@ -86,9 +88,10 @@ import type {
   EquipmentRow,
   MenuRow,
   VisitSourceRow,
+  CardColorPresetRow,
 } from "@/feature/settings/services/getSettingsData";
 
-type Tab = "shops" | "staff" | "equipments" | "menus" | "vsources";
+type Tab = "shops" | "staff" | "equipments" | "menus" | "vsources" | "cardColors";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "shops", label: "店舗" },
@@ -96,6 +99,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "equipments", label: "設備" },
   { key: "menus", label: "メニュー" },
   { key: "vsources", label: "来店経路" },
+  { key: "cardColors", label: "予約枠の色" },
 ];
 
 export function SettingsClient({
@@ -104,6 +108,7 @@ export function SettingsClient({
   equipments,
   menus,
   visitSources,
+  cardColorPresets,
   activeShopName,
 }: {
   shops: ShopRow[];
@@ -111,6 +116,7 @@ export function SettingsClient({
   equipments: EquipmentRow[];
   menus: MenuRow[];
   visitSources: VisitSourceRow[];
+  cardColorPresets: CardColorPresetRow[];
   activeShopName: string;
 }) {
   const router = useRouter();
@@ -462,6 +468,59 @@ export function SettingsClient({
               onDelete={() => {
                 if (confirm(`「${v.name}」を削除しますか？`))
                   run(() => deleteVisitSource(v.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
+      {tab === "cardColors" && (
+        <Section
+          title={`予約枠の色（${activeShopName}）`}
+          hint="予約モーダルで保存した色プリセットの一覧。名前と色をいつでも編集・削除できます。"
+          onAdd={() =>
+            setModal(
+              <CardColorPresetForm
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveCardColorPreset, fd)}
+                pending={pending}
+              />,
+            )
+          }
+        >
+          {cardColorPresets.length === 0 && (
+            <Empty>保存済みの色プリセットはありません</Empty>
+          )}
+          {cardColorPresets.map((c) => (
+            <Row
+              key={c.id}
+              title={c.name}
+              meta={
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-4 w-4 shrink-0 rounded ring-1 ring-line"
+                    style={{ background: c.hexColor }}
+                  />
+                  <span className="tabular-nums text-faint">
+                    {c.hexColor}
+                  </span>
+                  <span className="text-faint">・ 表示順 {c.sortNumber}</span>
+                </span>
+              }
+              onEdit={() =>
+                setModal(
+                  <CardColorPresetForm
+                    initial={c}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveCardColorPreset, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (confirm(`「${c.name}」を削除しますか？`))
+                  run(() => deleteCardColorPreset(c.id));
               }}
               pending={pending}
             />
@@ -1448,6 +1507,77 @@ function EquipmentForm({
           />
           予約可能（外すと一時的に使えなくなります）
         </label>
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
+  );
+}
+
+function CardColorPresetForm({
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  initial?: CardColorPresetRow;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? "",
+    hexColor: initial?.hexColor ?? "#d8b06a",
+    sortNumber: initial?.sortNumber ?? 0,
+  });
+  const submit = () => {
+    const fd = new FormData();
+    if (initial) fd.set("id", String(initial.id));
+    fd.set("name", f.name);
+    fd.set("hexColor", f.hexColor);
+    fd.set("sortNumber", String(f.sortNumber));
+    onSubmit(fd);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "色プリセットを編集" : "色プリセットを追加"}
+    >
+      <div className="space-y-4">
+        <Field label="名前">
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder="新規さん / VIP / 要相談 など"
+            maxLength={40}
+          />
+        </Field>
+        <Field label="色">
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={f.hexColor}
+              onChange={(e) => setF({ ...f, hexColor: e.target.value })}
+              className="h-9 w-12 shrink-0 cursor-pointer rounded-lg border border-line bg-base p-1"
+              aria-label="プリセットの色"
+            />
+            <span className="text-sm tabular-nums text-muted">{f.hexColor}</span>
+          </div>
+        </Field>
+        <Field label="表示順">
+          <Input
+            type="number"
+            min={0}
+            value={f.sortNumber}
+            onChange={(e) =>
+              setF({ ...f, sortNumber: Number(e.target.value) || 0 })
+            }
+          />
+        </Field>
+        <p className="text-[11px] text-faint">
+          保存した色は予約モーダルからもチップとして再利用できます。
+          色を後から変更しても、過去の予約の色は変わりません（色をコピーする運用）。
+        </p>
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
     </Modal>

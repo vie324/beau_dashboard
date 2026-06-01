@@ -2,7 +2,7 @@ import { db } from "@/helper/lib/db";
 
 /** Master data for the settings screen, scoped to the active brand/shop. */
 export async function getSettingsData(brandId: number, shopId: number) {
-  const [shops, staffs, equipments, menus, visitSources] = await Promise.all([
+  const [shops, staffs, equipments, menus, visitSources, cardColorPresets] = await Promise.all([
     db.shop.findMany({
       where: { brandId, deletedAt: null },
       orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
@@ -65,9 +65,14 @@ export async function getSettingsData(brandId: number, shopId: number) {
       orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
       select: { id: true, name: true, sortNumber: true },
     }),
+    db.cardColorPreset.findMany({
+      where: { shopId, deletedAt: null },
+      orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, hexColor: true, sortNumber: true },
+    }),
   ]);
 
-  return { shops, staffs, equipments, menus, visitSources };
+  return { shops, staffs, equipments, menus, visitSources, cardColorPresets };
 }
 
 export type SettingsData = Awaited<ReturnType<typeof getSettingsData>>;
@@ -76,3 +81,4 @@ export type StaffRow = SettingsData["staffs"][number];
 export type EquipmentRow = SettingsData["equipments"][number];
 export type MenuRow = SettingsData["menus"][number];
 export type VisitSourceRow = SettingsData["visitSources"][number];
+export type CardColorPresetRow = SettingsData["cardColorPresets"][number];

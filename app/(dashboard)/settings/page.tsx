@@ -26,6 +26,7 @@ export default async function SettingsPage() {
         equipments={data.equipments}
         menus={data.menus}
         visitSources={data.visitSources}
+        cardColorPresets={data.cardColorPresets}
         activeShopName={activeShopName}
       />
     </>

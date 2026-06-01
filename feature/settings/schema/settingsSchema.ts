@@ -40,6 +40,17 @@ export const visitSourceSchema = z.object({
 });
 export type VisitSourceInput = z.infer<typeof visitSourceSchema>;
 
+export const cardColorPresetSchema = z.object({
+  id,
+  name: z.string().trim().min(1, "名前を入力してください").max(40),
+  hexColor: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, "色は #RRGGBB 形式で指定してください"),
+  sortNumber: z.coerce.number().int().min(0).max(9999).default(0),
+});
+export type CardColorPresetInput = z.infer<typeof cardColorPresetSchema>;
+
 export const staffSchema = z.object({
   id,
   name: z.string().trim().min(1, "スタッフ名を入力してください").max(80),
