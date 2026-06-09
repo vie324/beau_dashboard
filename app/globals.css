@@ -40,4 +40,32 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* iOS Safari の input[type="date"] は内部表示が中央寄せかつ大きめで、
+     狭い grid 列 (grid-cols-2) で「2026/06/09」がはみ出して見えるため、
+     内部表示を左寄せ・小さめ・余白控えめにする。
+     ::-webkit-date-and-time-value は iOS Safari、
+     ::-webkit-datetime-edit は macOS Safari/デスクトップ Chromium で効く。 */
+  .date-input-tight {
+    text-align: left;
+    padding-left: 0.5rem;
+    padding-right: 0.25rem;
+    min-width: 0;
+  }
+  .date-input-tight::-webkit-date-and-time-value {
+    text-align: left;
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+  .date-input-tight::-webkit-datetime-edit {
+    text-align: left;
+    padding: 0;
+  }
+  .date-input-tight::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+  }
+  .date-input-tight::-webkit-calendar-picker-indicator {
+    margin-left: 0;
+    padding: 0;
+  }
 }
