@@ -390,7 +390,7 @@ export function AppointmentModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label>日付</Label>
             <Input
@@ -417,7 +417,7 @@ export function AppointmentModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label>メニュー</Label>
             <MenuCombobox
@@ -507,7 +507,7 @@ export function AppointmentModal({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label>来店者名</Label>
                 <Input
@@ -542,7 +542,7 @@ export function AppointmentModal({
           </>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label>売上（円）</Label>
             <Input

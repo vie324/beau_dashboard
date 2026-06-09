@@ -20,7 +20,7 @@ export function DateNav({
 
   return (
     <div
-      className="flex items-center gap-2"
+      className="flex flex-wrap items-center gap-2"
       aria-busy={pending}
     >
       <Button
@@ -28,6 +28,7 @@ export function DateNav({
         variant="outline"
         disabled={pending}
         onClick={() => go(shiftDateString(date, -1))}
+        className="whitespace-nowrap"
       >
         ‹ 前日
       </Button>
@@ -36,6 +37,7 @@ export function DateNav({
         variant={date === today ? "primary" : "ghost"}
         disabled={pending}
         onClick={() => go(today)}
+        className="whitespace-nowrap"
       >
         今日
       </Button>
@@ -44,19 +46,22 @@ export function DateNav({
         variant="outline"
         disabled={pending}
         onClick={() => go(shiftDateString(date, 1))}
+        className="whitespace-nowrap"
       >
         翌日 ›
       </Button>
-      <div className="ml-2 flex items-center gap-2">
-        <span className="text-lg font-semibold text-ink">
+      <div className="ml-1 flex items-center gap-2 sm:ml-2">
+        <span className="whitespace-nowrap text-base font-semibold text-ink sm:text-lg">
           {formatJpDate(date)}
         </span>
+        {/* モバイルでは日付ピッカーは省略（左上が窮屈になるため）。
+            日付変更は「前日/今日/翌日」ボタンで行える。 */}
         <input
           type="date"
           value={date}
           disabled={pending}
           onChange={(e) => e.target.value && go(e.target.value)}
-          className="h-8 rounded-xl border border-line bg-base px-2 text-xs text-muted focus:border-accent/60 focus:outline-none disabled:opacity-50"
+          className="hidden h-8 rounded-xl border border-line bg-base px-2 text-xs text-muted focus:border-accent/60 focus:outline-none disabled:opacity-50 sm:block"
         />
         {pending && (
           <span className="text-xs text-faint">読み込み中…</span>

@@ -88,22 +88,27 @@ export function PrintTimeline({
       start = 9 * 60;
       end = 21 * 60;
     }
-    // 午前/午後セッションは break 境界で範囲を絞り、はみ出し予約は許容するが
-    // 表示は対象セッション内に限定する。break 未定義のときは全日扱い。
+    // 午前/午後セッションは break 境界で範囲を絞る。
     // 午前は休憩開始ぴったりで切ると 12:30〜13:00 のような遅めの午前枠が
     // 印刷に出ないので、+1 時間 (休憩終了を上限) まで描画範囲を伸ばす。
     if (session === "morning" && breakBand) {
       end = Math.min(breakBand.be, breakBand.bs + 60);
     } else if (session === "afternoon" && breakBand) {
       start = breakBand.be;
-    } else {
-      // all のとき、営業時間外に予約があれば範囲を広げる（表示漏れを防ぐ）。
-      for (const r of reservations) {
-        const s = jstMinutesOfDay(new Date(r.startAt));
-        const e = jstMinutesOfDay(new Date(r.endAt));
-        if (s < start) start = Math.floor(s / 60) * 60;
-        if (e > end) end = Math.ceil(e / 60) * 60;
+    }
+    // セッションを問わず、対象範囲にかかる予約があれば範囲を広げる
+    // (営業時間外・閉店後の予約が見切れないようにする)。
+    for (const r of reservations) {
+      const s = jstMinutesOfDay(new Date(r.startAt));
+      const e = jstMinutesOfDay(new Date(r.endAt));
+      if (session === "morning" && breakBand) {
+        // 午前枠と重なる予約のみを反映 (午後の予約で範囲を広げない)
+        if (s >= end || e <= start) continue;
+      } else if (session === "afternoon" && breakBand) {
+        if (e <= start) continue;
       }
+      if (s < start) start = Math.floor(s / 60) * 60;
+      if (e > end) end = Math.ceil(e / 60) * 60;
     }
     if (end <= start) {
       start = 9 * 60;
@@ -460,21 +465,20 @@ export function PrintTimeline({
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
-                        // 15分枠。1行目に時刻+No、2行目以降に名前(+メモ)。
-                        // 時刻+Noと名前を同じ flex 行に並べると、ダブルブッキングで
-                        // レーンが半分の幅になったとき名前が描画スペースを失って消えるため、
-                        // 名前は必ず独立した行で全幅で描画する。
+                        // 15分枠。1行目=時刻、2行目=患者No、3行目以降=名前(+メモ)。
+                        // バッジ表示で No が潰れて切れる事例があったため、No 行は
+                        // padding なしの全幅テキストで描画し、必ず番号が読めるようにする。
+                        // 時刻+番号を同じ行にすると狭いレーンで右側が省略され番号が
+                        // 消えるので、必ず行を分ける。
                         <div className="flex flex-col overflow-hidden leading-tight">
-                          <div className="flex items-center gap-1 overflow-hidden">
-                            <span className="shrink-0 font-semibold tabular-nums">
-                              {fmt(startTotalMin)}
-                            </span>
-                            {r.customer?.code && (
-                              <span className="shrink-0 text-[8px] text-muted tabular-nums">
-                                No.{r.customer.code}
-                              </span>
-                            )}
+                          <div className="font-semibold tabular-nums">
+                            {fmt(startTotalMin)}
                           </div>
+                          {r.customer?.code && (
+                            <div className="font-bold tabular-nums text-ink">
+                              No.{r.customer.code}
+                            </div>
+                          )}
                           <div className="break-words font-medium">{name}</div>
                           {r.note && (
                             <div className="break-words text-[8px] text-ink/70">
@@ -484,12 +488,12 @@ export function PrintTimeline({
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center justify-between gap-1">
+                          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                             <span className="font-semibold tabular-nums">
                               {fmt(startTotalMin)}
                             </span>
                             {r.customer?.code && (
-                              <span className="text-[8px] text-muted tabular-nums">
+                              <span className="font-bold tabular-nums text-ink">
                                 No.{r.customer.code}
                               </span>
                             )}

@@ -483,6 +483,92 @@ export async function deleteTimeBlock(id: number): Promise<ActionResult> {
  * 「前回」= 現時点より前で、キャンセル/ノーショーでない最新の予約 (kind="appointment")。
  * 編集中の予約自身は除外する。該当が無ければ null。
  */
+/**
+ * 患者番号（顧客 code）から該当顧客の予約一覧を取得する。
+ * 「番号で検索 → その人の予約日にジャンプ」用。
+ * 一致候補が複数ある場合に備えて配列で返す（通常は 0 or 1 件）。
+ */
+export async function findCustomerAppointmentsByCode(code: string): Promise<{
+  ok: true;
+  customers: {
+    id: number;
+    code: string | null;
+    name: string;
+    kana: string | null;
+    phone: string | null;
+    appointments: {
+      id: number;
+      date: string; // YYYY-MM-DD (JST)
+      startAt: Date;
+      endAt: Date;
+      status: number;
+      menuName: string | null;
+      staffName: string | null;
+    }[];
+  }[];
+} | { ok: false; error: string }> {
+  if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
+  const trimmed = code.trim();
+  if (!trimmed) return { ok: false, error: "番号を入力してください" };
+  const shopId = await getActiveShopId();
+
+  const customers = await db.customer.findMany({
+    where: { shopId, deletedAt: null, code: trimmed },
+    select: { id: true, code: true, name: true, kana: true, phone: true },
+    take: 5,
+  });
+  if (customers.length === 0) {
+    return { ok: false, error: `No.${trimmed} の患者は見つかりません` };
+  }
+
+  const ids = customers.map((c) => c.id);
+  const appts = await db.appointment.findMany({
+    where: {
+      shopId,
+      customerId: { in: ids },
+      deletedAt: null,
+      kind: "appointment",
+    },
+    orderBy: { startAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      customerId: true,
+      startAt: true,
+      endAt: true,
+      status: true,
+      menu: { select: { name: true } },
+      staff: { select: { name: true } },
+    },
+  });
+
+  const fmtDate = (d: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+
+  return {
+    ok: true,
+    customers: customers.map((c) => ({
+      ...c,
+      appointments: appts
+        .filter((a) => a.customerId === c.id)
+        .map((a) => ({
+          id: a.id,
+          date: fmtDate(a.startAt),
+          startAt: a.startAt,
+          endAt: a.endAt,
+          status: a.status,
+          menuName: a.menu?.name ?? null,
+          staffName: a.staff?.name ?? null,
+        })),
+    })),
+  };
+}
+
 export async function getCustomerLastNote(
   customerId: number,
   excludeAppointmentId?: number,
