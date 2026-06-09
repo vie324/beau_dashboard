@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
@@ -9,6 +10,7 @@ import { jstMinutesOfDay } from "@/helper/utils/time";
 import { staffWorksOn } from "@/helper/utils/staffWork";
 import { assignLanes } from "@/helper/utils/laneLayout";
 import { DateNav } from "@/feature/reservation/components/DateNav";
+import { CustomerCodeSearch } from "@/feature/reservation/components/CustomerCodeSearch";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
 import { DayCalendar } from "@/feature/reservation/components/DayCalendar";
@@ -114,6 +116,25 @@ export function ReservationBoard({
         ? { kind: "block", mode: "edit", row: r }
         : { kind: "appointment", mode: "edit", row: r },
     );
+
+  // 患者番号検索などで `?focus=<予約ID>` 付きで遷移してきた場合、
+  // その予約のモーダルを自動で開く。読み込んだら URL から focus を消す。
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const focusParam = searchParams.get("focus");
+  useEffect(() => {
+    if (!focusParam) return;
+    const id = Number(focusParam);
+    if (!Number.isFinite(id)) return;
+    const target = reservations.find((r) => r.id === id);
+    if (target) {
+      openCardEdit(target);
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("focus");
+      const qs = next.toString();
+      router.replace(`/reservation${qs ? `?${qs}` : ""}`, { scroll: false });
+    }
+  }, [focusParam, reservations, router, searchParams]);
 
   // ドラッグで時間ブロックを作成する（PCのみ。スマホは「＋ 時間ブロック」ボタンを使用）。
   // スタッフ行ならスタッフブロック、設備行なら設備ブロックを作る。
@@ -287,7 +308,8 @@ export function ReservationBoard({
     <>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <DateNav date={date} today={today} />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <CustomerCodeSearch />
           {unconfirmed > 0 && (
             <span className="rounded-lg border border-warn/40 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
               未確認 {unconfirmed}件

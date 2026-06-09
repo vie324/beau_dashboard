@@ -88,22 +88,27 @@ export function PrintTimeline({
       start = 9 * 60;
       end = 21 * 60;
     }
-    // 午前/午後セッションは break 境界で範囲を絞り、はみ出し予約は許容するが
-    // 表示は対象セッション内に限定する。break 未定義のときは全日扱い。
+    // 午前/午後セッションは break 境界で範囲を絞る。
     // 午前は休憩開始ぴったりで切ると 12:30〜13:00 のような遅めの午前枠が
     // 印刷に出ないので、+1 時間 (休憩終了を上限) まで描画範囲を伸ばす。
     if (session === "morning" && breakBand) {
       end = Math.min(breakBand.be, breakBand.bs + 60);
     } else if (session === "afternoon" && breakBand) {
       start = breakBand.be;
-    } else {
-      // all のとき、営業時間外に予約があれば範囲を広げる（表示漏れを防ぐ）。
-      for (const r of reservations) {
-        const s = jstMinutesOfDay(new Date(r.startAt));
-        const e = jstMinutesOfDay(new Date(r.endAt));
-        if (s < start) start = Math.floor(s / 60) * 60;
-        if (e > end) end = Math.ceil(e / 60) * 60;
+    }
+    // セッションを問わず、対象範囲にかかる予約があれば範囲を広げる
+    // (営業時間外・閉店後の予約が見切れないようにする)。
+    for (const r of reservations) {
+      const s = jstMinutesOfDay(new Date(r.startAt));
+      const e = jstMinutesOfDay(new Date(r.endAt));
+      if (session === "morning" && breakBand) {
+        // 午前枠と重なる予約のみを反映 (午後の予約で範囲を広げない)
+        if (s >= end || e <= start) continue;
+      } else if (session === "afternoon" && breakBand) {
+        if (e <= start) continue;
       }
+      if (s < start) start = Math.floor(s / 60) * 60;
+      if (e > end) end = Math.ceil(e / 60) * 60;
     }
     if (end <= start) {
       start = 9 * 60;
@@ -460,7 +465,7 @@ export function PrintTimeline({
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
-                        // 15分枠。1行目に時刻+No、2行目以降に名前(+メモ)。
+                        // 15分枠。1行目に時刻+患者No、2行目以降に名前(+メモ)。
                         // 時刻+Noと名前を同じ flex 行に並べると、ダブルブッキングで
                         // レーンが半分の幅になったとき名前が描画スペースを失って消えるため、
                         // 名前は必ず独立した行で全幅で描画する。
@@ -470,7 +475,7 @@ export function PrintTimeline({
                               {fmt(startTotalMin)}
                             </span>
                             {r.customer?.code && (
-                              <span className="shrink-0 text-[8px] text-muted tabular-nums">
+                              <span className="shrink-0 rounded bg-ink/10 px-1 text-[9px] font-bold tabular-nums text-ink">
                                 No.{r.customer.code}
                               </span>
                             )}
@@ -489,7 +494,7 @@ export function PrintTimeline({
                               {fmt(startTotalMin)}
                             </span>
                             {r.customer?.code && (
-                              <span className="text-[8px] text-muted tabular-nums">
+                              <span className="rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-ink">
                                 No.{r.customer.code}
                               </span>
                             )}
