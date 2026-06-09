@@ -465,21 +465,20 @@ export function PrintTimeline({
                       style={{ top, height, left: leftStyle, width: widthStyle }}
                     >
                       {compact ? (
-                        // 15分枠。1行目に時刻+患者No、2行目以降に名前(+メモ)。
-                        // 時刻+Noと名前を同じ flex 行に並べると、ダブルブッキングで
-                        // レーンが半分の幅になったとき名前が描画スペースを失って消えるため、
-                        // 名前は必ず独立した行で全幅で描画する。
+                        // 15分枠。1行目=時刻、2行目=患者No、3行目以降=名前(+メモ)。
+                        // バッジ表示で No が潰れて切れる事例があったため、No 行は
+                        // padding なしの全幅テキストで描画し、必ず番号が読めるようにする。
+                        // 時刻+番号を同じ行にすると狭いレーンで右側が省略され番号が
+                        // 消えるので、必ず行を分ける。
                         <div className="flex flex-col overflow-hidden leading-tight">
-                          <div className="flex items-center gap-1 overflow-hidden">
-                            <span className="shrink-0 font-semibold tabular-nums">
-                              {fmt(startTotalMin)}
-                            </span>
-                            {r.customer?.code && (
-                              <span className="shrink-0 rounded bg-ink/10 px-1 text-[9px] font-bold tabular-nums text-ink">
-                                No.{r.customer.code}
-                              </span>
-                            )}
+                          <div className="font-semibold tabular-nums">
+                            {fmt(startTotalMin)}
                           </div>
+                          {r.customer?.code && (
+                            <div className="font-bold tabular-nums text-ink">
+                              No.{r.customer.code}
+                            </div>
+                          )}
                           <div className="break-words font-medium">{name}</div>
                           {r.note && (
                             <div className="break-words text-[8px] text-ink/70">
@@ -489,12 +488,12 @@ export function PrintTimeline({
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center justify-between gap-1">
+                          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                             <span className="font-semibold tabular-nums">
                               {fmt(startTotalMin)}
                             </span>
                             {r.customer?.code && (
-                              <span className="rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-ink">
+                              <span className="font-bold tabular-nums text-ink">
                                 No.{r.customer.code}
                               </span>
                             )}
