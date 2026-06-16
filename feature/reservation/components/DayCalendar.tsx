@@ -319,11 +319,13 @@ export function DayCalendar({
             className="sticky left-0 z-20 shrink-0 border-r border-line bg-surface"
             style={{ width: GUTTER_W, height: totalH }}
           >
-            {hours.map((m) => (
+            {hours.map((m, i) => (
               <div
                 key={m}
-                className="absolute right-1 -translate-y-1/2 text-[11px] font-medium tabular-nums text-faint"
-                style={{ top: (m - startMin) * PX_PER_MIN }}
+                className={`absolute right-1 text-[11px] font-medium tabular-nums text-faint ${
+                  i === 0 ? "top-0" : "-translate-y-1/2"
+                }`}
+                style={i === 0 ? undefined : { top: (m - startMin) * PX_PER_MIN }}
               >
                 {minToTime(m)}
               </div>
