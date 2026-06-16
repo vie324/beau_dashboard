@@ -651,6 +651,7 @@ function ShopForm({
     address: initial?.address ?? "",
     phone: initial?.phone ?? "",
     lineUrl: initial?.lineUrl ?? "",
+    notificationEmail: initial?.notificationEmail ?? "",
     openTime: initial?.openTime ?? "",
     closeTime: initial?.closeTime ?? "",
     breakStart: initial?.breakStart ?? "",
@@ -749,6 +750,16 @@ function ShopForm({
           <Input
             value={f.lineUrl}
             onChange={(e) => setF({ ...f, lineUrl: e.target.value })}
+          />
+        </Field>
+        <Field label="通知用メール（新規予約が入ったときに通知）">
+          <Input
+            type="email"
+            value={f.notificationEmail}
+            onChange={(e) =>
+              setF({ ...f, notificationEmail: e.target.value })
+            }
+            placeholder="reception@example.com"
           />
         </Field>
 

@@ -11,6 +11,7 @@ import {
   timeBlockSchema,
   type AppointmentInput,
 } from "@/feature/reservation/schema/reservationSchema";
+import { sendBookingEmails } from "@/feature/notify/sendBookingEmails";
 
 export type ActionResult =
   | { ok: true }
@@ -180,6 +181,7 @@ async function upsert(
     cardColor: input.cardColor ?? null,
   };
 
+  let createdId: number | null = null;
   try {
     if (input.id) {
       const existing = await db.appointment.findFirst({
@@ -189,10 +191,19 @@ async function upsert(
       if (!existing) return { ok: false, error: "予約が見つかりません" };
       await db.appointment.update({ where: { id: input.id }, data });
     } else {
-      await db.appointment.create({ data: { ...data, source: "manual" } });
+      const created = await db.appointment.create({
+        data: { ...data, source: "manual" },
+        select: { id: true },
+      });
+      createdId = created.id;
     }
   } catch {
     return { ok: false, error: "保存に失敗しました。時間をおいて再度お試しください" };
+  }
+
+  if (createdId != null) {
+    // 新規予約の確定通知（顧客・店舗）。失敗しても予約自体は成功扱い。
+    await sendBookingEmails(createdId);
   }
 
   revalidatePath("/reservation");

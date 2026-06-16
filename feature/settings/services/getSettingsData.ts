@@ -13,6 +13,7 @@ export async function getSettingsData(brandId: number, shopId: number) {
         address: true,
         phone: true,
         lineUrl: true,
+        notificationEmail: true,
         openTime: true,
         closeTime: true,
         breakStart: true,
