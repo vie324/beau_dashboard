@@ -8,12 +8,16 @@ export function Modal({
   onClose,
   title,
   children,
+  footer,
   className,
 }: {
   open: boolean;
   onClose: () => void;
   title?: React.ReactNode;
   children: React.ReactNode;
+  /** 指定すると下部に sticky なアクションバーとして表示する（保存/キャンセル等）。
+      スマホで縦長フォームでも一番下までスクロールせずにボタンを押せる。 */
+  footer?: React.ReactNode;
   className?: string;
 }) {
   React.useEffect(() => {
@@ -40,25 +44,31 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 mt-6 w-full max-w-lg animate-fade-in rounded-xl border border-line bg-surface shadow-panel",
+          "relative z-10 my-6 w-full max-w-lg animate-fade-in rounded-xl border border-line bg-surface shadow-panel",
           className,
         )}
       >
         {title != null && (
-          <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          // ヘッダーは sticky: 縦長モーダルをスクロールしてもタイトルと✕が残る。
+          <div className="sticky top-0 z-20 flex items-center justify-between rounded-t-xl border-b border-line bg-surface px-5 py-4">
             <h2 className="text-sm font-semibold tracking-wide text-ink">
               {title}
             </h2>
             <button
               onClick={onClose}
               aria-label="閉じる"
-              className="text-muted transition-colors hover:text-ink"
+              className="-mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-ink"
             >
               ✕
             </button>
           </div>
         )}
         <div className="p-5">{children}</div>
+        {footer != null && (
+          <div className="sticky bottom-0 z-20 rounded-b-xl border-t border-line bg-surface px-5 py-3">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
