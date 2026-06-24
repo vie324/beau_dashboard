@@ -129,6 +129,7 @@ export function CustomerForm({
               type="date"
               value={form.birthday}
               onChange={(e) => set("birthday", e.target.value)}
+              className="date-input-tight"
             />
           </div>
           <div>
