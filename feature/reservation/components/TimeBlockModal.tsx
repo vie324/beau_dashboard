@@ -244,6 +244,7 @@ export function TimeBlockModal({
               type="date"
               value={form.date}
               onChange={(e) => set("date", e.target.value)}
+              className="date-input-tight"
             />
           </div>
           <div>
