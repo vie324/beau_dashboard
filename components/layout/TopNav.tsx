@@ -26,7 +26,9 @@ export function TopNav() {
             key={link.href}
             href={link.href}
             className={cn(
-              "relative rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+              // shrink-0 + whitespace-nowrap: スマホで横スクロールさせる際に
+              // 各項目が潰れたり折り返したりしないようにする。
+              "relative shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-colors",
               active
                 ? "text-accent"
                 : "text-muted hover:text-ink hover:bg-elevated",

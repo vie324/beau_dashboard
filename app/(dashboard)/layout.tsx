@@ -42,7 +42,7 @@ export default async function DashboardLayout({
             <UserMenu name={user.name} />
           </div>
         </div>
-        <div className="border-t border-line px-4 py-2 sm:hidden">
+        <div className="no-scrollbar overflow-x-auto border-t border-line px-4 py-2 sm:hidden">
           <TopNav />
         </div>
       </header>
