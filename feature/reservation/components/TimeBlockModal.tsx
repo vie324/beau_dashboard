@@ -43,6 +43,8 @@ export function TimeBlockModal({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // 削除はネイティブ confirm() ではなくフッター内のインライン確認に置き換える。
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = Boolean(initial);
   // 設備モード: initial か prefill のどちらかに equipmentId が入っていれば設備ブロックとして扱う。
@@ -203,7 +205,6 @@ export function TimeBlockModal({
 
   function remove() {
     if (!initial) return;
-    if (!confirm("この時間ブロックを削除しますか？")) return;
     startTransition(async () => {
       onOptimistic?.({ type: "delete", id: initial.id });
       const res = await deleteTimeBlock(initial.id);
@@ -212,14 +213,58 @@ export function TimeBlockModal({
         router.refresh();
       } else {
         setError(res.error);
+        setConfirmingDelete(false);
       }
     });
   }
+
+  const footer = confirmingDelete ? (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-ink">削除しますか？</span>
+      <div className="flex gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setConfirmingDelete(false)}
+          disabled={pending}
+        >
+          キャンセル
+        </Button>
+        <Button variant="danger" size="sm" onClick={remove} disabled={pending}>
+          {pending ? "削除中…" : "削除する"}
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex items-center justify-between">
+      {isEdit ? (
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={pending}
+        >
+          削除
+        </Button>
+      ) : (
+        <span />
+      )}
+      <div className="flex gap-2">
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
+          キャンセル
+        </Button>
+        <Button size="sm" onClick={submit} disabled={pending}>
+          {pending ? "保存中…" : "保存"}
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <Modal
       open={open}
       onClose={onClose}
+      footer={footer}
       title={
         isEdit
           ? isEquipmentMode
@@ -327,34 +372,6 @@ export function TimeBlockModal({
             {error}
           </p>
         )}
-
-        <div className="flex items-center justify-between pt-2">
-          {isEdit ? (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={remove}
-              disabled={pending}
-            >
-              削除
-            </Button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              disabled={pending}
-            >
-              キャンセル
-            </Button>
-            <Button size="sm" onClick={submit} disabled={pending}>
-              {pending ? "保存中…" : "保存"}
-            </Button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

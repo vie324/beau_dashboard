@@ -41,6 +41,25 @@
     text-wrap: balance;
   }
 
+  /* 横スクロールさせたいがスクロールバーは隠したい要素用（スマホの上部ナビ等）。 */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* <select> は appearance-none でネイティブの矢印が消えるので、独自の▾を
+     背景画像で描く。これが無いと「タップできるプルダウン」だと気づきにくい。
+     色は muted(#6f6757)。右側の pr-8 で確保した余白に重ねる。 */
+  .select-chevron {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%236f6757' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 0.75rem;
+  }
+
   /* iOS Safari の input[type="date"] は内部表示が中央寄せかつ大きめで、
      狭い grid 列 (grid-cols-2) で「2026/06/09」がはみ出して見えるため、
      内部表示を左寄せ・小さめ・余白控えめにする。

@@ -80,6 +80,8 @@ export function AppointmentModal({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [salesTouched, setSalesTouched] = useState(false);
+  // 削除はネイティブ confirm() ではなくフッター内のインライン確認に置き換える。
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = Boolean(initial);
 
@@ -326,7 +328,6 @@ export function AppointmentModal({
 
   function remove() {
     if (!initial) return;
-    if (!confirm("この予約を削除しますか？")) return;
     startTransition(async () => {
       onOptimistic?.({ type: "delete", id: initial.id });
       const res = await deleteAppointment(initial.id);
@@ -335,14 +336,69 @@ export function AppointmentModal({
         router.refresh();
       } else {
         setError(res.error);
+        setConfirmingDelete(false);
       }
     });
   }
+
+  const footer = confirmingDelete ? (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-ink">この予約を削除しますか？</span>
+      <div className="flex gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setConfirmingDelete(false)}
+          disabled={pending}
+        >
+          キャンセル
+        </Button>
+        <Button variant="danger" size="sm" onClick={remove} disabled={pending}>
+          {pending ? "削除中…" : "削除する"}
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex items-center justify-between gap-2">
+      {isEdit ? (
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={pending}
+        >
+          削除
+        </Button>
+      ) : (
+        <span />
+      )}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
+          キャンセル
+        </Button>
+        {!isEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => submit(true)}
+            disabled={pending}
+            title="保存後に同じ顧客・メニュー・担当でもう1件入力します"
+          >
+            {pending ? "保存中…" : "保存して続けて入力"}
+          </Button>
+        )}
+        <Button size="sm" onClick={() => submit(false)} disabled={pending}>
+          {pending ? "保存中…" : "保存"}
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <Modal
       open={open}
       onClose={onClose}
+      footer={footer}
       title={isEdit ? "予約の編集" : "新規予約"}
     >
       <div className="space-y-4">
@@ -646,35 +702,6 @@ export function AppointmentModal({
             {successMsg}
           </p>
         )}
-
-        <div className="flex items-center justify-between pt-2">
-          {isEdit ? (
-            <Button variant="danger" size="sm" onClick={remove} disabled={pending}>
-              削除
-            </Button>
-          ) : (
-            <span />
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
-              キャンセル
-            </Button>
-            {!isEdit && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => submit(true)}
-                disabled={pending}
-                title="保存後に同じ顧客・メニュー・担当でもう1件入力します"
-              >
-                {pending ? "保存中…" : "保存して続けて入力"}
-              </Button>
-            )}
-            <Button size="sm" onClick={() => submit(false)} disabled={pending}>
-              {pending ? "保存中…" : "保存"}
-            </Button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

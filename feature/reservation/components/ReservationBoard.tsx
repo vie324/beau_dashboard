@@ -382,13 +382,13 @@ export function ReservationBoard({
 
       {(desktopView === "day" || mobileView === "day") && (
         <div
-          className={
+          className={`pb-24 sm:pb-0 ${
             desktopView === "day" && mobileView === "day"
               ? ""
               : desktopView === "day"
                 ? "hidden sm:block"
                 : "block sm:hidden"
-          }
+          }`}
         >
           <DayCalendar
             date={date}
