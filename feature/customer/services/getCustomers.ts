@@ -57,7 +57,9 @@ export async function getCustomers(shopId: number) {
         shopId,
         customerId: { in: ids },
         deletedAt: null,
-        status: { notIn: [3, 4, 99] },
+        // 「最終来店」は完了(status=2)のみ。未来の予約(0)や施術中(1)を
+        // 来店日として拾わないようにする（visitCount と整合）。
+        status: 2,
       },
       _max: { startAt: true },
     }),

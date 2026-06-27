@@ -14,11 +14,19 @@ import { db } from "@/helper/lib/db";
 export async function finalizeOrderPaid(
   orderId: number,
   stripePaymentId: string | null,
+  stripeSessionId: string | null,
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     // pending の行だけを paid に更新できる。並行/再送 webhook では2回目以降 count=0。
+    // session id も突合し、metadata の orderId が指す注文がこのセッションの注文で
+    // あることを担保する（取り違え防止の多層防御）。
     const claim = await tx.order.updateMany({
-      where: { id: orderId, paymentStatus: "pending", deletedAt: null },
+      where: {
+        id: orderId,
+        paymentStatus: "pending",
+        deletedAt: null,
+        ...(stripeSessionId ? { stripeSessionId } : {}),
+      },
       data: {
         paymentStatus: "paid",
         status: "received",
@@ -26,7 +34,7 @@ export async function finalizeOrderPaid(
         stripePaymentId,
       },
     });
-    if (claim.count === 0) return; // 既に確定済み / 取消済み
+    if (claim.count === 0) return; // 既に確定済み / 取消済み / セッション不一致
 
     const order = await tx.order.findUnique({
       where: { id: orderId },
@@ -160,6 +168,74 @@ export async function releaseOrderStock(
           reason: `予約解放 ${order.orderNo}`,
           orderId: order.id,
         },
+      });
+    }
+  });
+}
+
+/**
+ * Stripe 側で返金された決済（charge.refunded）を社内データに反映する。
+ * 対象の PaymentIntent を持つ paid 注文を refunded にし、在庫を戻し、付与ポイントを
+ * 取り消す。冪等: paid の行を1回だけ確定する。
+ */
+export async function refundOrderByPaymentIntent(
+  paymentIntentId: string,
+): Promise<void> {
+  if (!paymentIntentId) return;
+  await db.$transaction(async (tx) => {
+    const target = await tx.order.findFirst({
+      where: { stripePaymentId: paymentIntentId, paymentStatus: "paid" },
+      select: { id: true },
+    });
+    if (!target) return;
+
+    const claim = await tx.order.updateMany({
+      where: { id: target.id, paymentStatus: "paid" },
+      data: { paymentStatus: "refunded", status: "cancelled" },
+    });
+    if (claim.count === 0) return;
+
+    const order = await tx.order.findUnique({
+      where: { id: target.id },
+      include: { items: true, pointTransactions: true },
+    });
+    if (!order) return;
+
+    for (const item of order.items) {
+      if (!item.productId) continue;
+      await tx.inventoryItem.updateMany({
+        where: { productId: item.productId, shopId: order.shopId },
+        data: { quantity: { increment: item.qty } },
+      });
+      await tx.stockMovement.create({
+        data: {
+          shopId: order.shopId,
+          productId: item.productId,
+          type: "adjust",
+          qty: item.qty,
+          reason: `返金 ${order.orderNo}`,
+          orderId: order.id,
+        },
+      });
+    }
+
+    const earned = order.pointTransactions
+      .filter((t) => t.type === "earn")
+      .reduce((s, t) => s + t.points, 0);
+    if (earned > 0 && order.customerId) {
+      await tx.pointTransaction.create({
+        data: {
+          shopId: order.shopId,
+          customerId: order.customerId,
+          orderId: order.id,
+          type: "adjust",
+          points: -earned,
+          reason: `返金 ${order.orderNo}`,
+        },
+      });
+      await tx.customer.update({
+        where: { id: order.customerId },
+        data: { pointsBalance: { decrement: earned } },
       });
     }
   });

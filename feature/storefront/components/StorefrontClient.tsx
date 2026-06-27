@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea, Select } from "@/components/ui/Input";
@@ -24,6 +24,9 @@ import {
 
 type SortKey = "recommended" | "price-asc" | "price-desc" | "new";
 
+// 1注文あたりの数量上限（checkoutSchema の qty.max(99) と一致させる）。
+const MAX_QTY = 99;
+
 export function StorefrontClient({
   data,
   openCartInitially,
@@ -45,17 +48,40 @@ export function StorefrontClient({
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setCart(readCart(slug));
-    setWishlist(readWishlist(slug));
-    setRecent(readRecentlyViewed(slug));
-    if (openCartInitially) setCartOpen(true);
-  }, [slug, openCartInitially]);
+  const toastTimer = useRef<number | null>(null);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
     [products],
+  );
+
+  // 初期化: localStorage を読み、現在の在庫・公開状況に合わせてカートを正規化する
+  // （販売終了/在庫切れの除外、保存数量が在庫や上限を超えていればクランプ）。
+  useEffect(() => {
+    const raw = readCart(slug);
+    const reconciled = raw
+      .map((e) => {
+        const p = productById.get(e.productId);
+        if (!p || p.stock <= 0) return null;
+        const cap = Math.min(p.stock, MAX_QTY);
+        return { productId: e.productId, qty: Math.min(e.qty, cap) };
+      })
+      .filter((x): x is CartEntry => x !== null && x.qty > 0);
+    setCart(reconciled);
+    if (JSON.stringify(reconciled) !== JSON.stringify(raw)) {
+      writeCart(slug, reconciled);
+    }
+    setWishlist(readWishlist(slug));
+    setRecent(readRecentlyViewed(slug));
+    if (openCartInitially) setCartOpen(true);
+  }, [slug, openCartInitially, productById]);
+
+  // トーストタイマーのクリーンアップ（アンマウント後の setState 防止）
+  useEffect(
+    () => () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    },
+    [],
   );
 
   function persistCart(next: CartEntry[]) {
@@ -65,28 +91,34 @@ export function StorefrontClient({
 
   function flashToast(msg: string) {
     setToast(msg);
-    window.setTimeout(() => setToast(null), 1800);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
   }
 
   function add(productId: number) {
     const p = productById.get(productId);
     if (!p || p.stock <= 0) return;
-    const next = [...cart];
-    const found = next.find((e) => e.productId === productId);
+    const cap = Math.min(p.stock, MAX_QTY);
+    const found = cart.find((e) => e.productId === productId);
     const current = found?.qty ?? 0;
-    if (current >= p.stock) {
-      flashToast("在庫の上限です");
+    if (current >= cap) {
+      flashToast(current >= MAX_QTY ? "数量の上限です" : "在庫の上限です");
       return;
     }
-    if (found) found.qty = current + 1;
-    else next.push({ productId, qty: 1 });
+    // 既存オブジェクトを破壊せず、新しい配列・新しい要素を作る（state の不変性）
+    const next = found
+      ? cart.map((e) =>
+          e.productId === productId ? { ...e, qty: current + 1 } : e,
+        )
+      : [...cart, { productId, qty: 1 }];
     persistCart(next);
     flashToast(`「${p.name}」をカートに追加しました`);
   }
 
   function setQty(productId: number, qty: number) {
     const p = productById.get(productId);
-    const capped = Math.max(0, Math.min(qty, p?.stock ?? 0));
+    const cap = Math.min(p?.stock ?? 0, MAX_QTY);
+    const capped = Math.max(0, Math.min(qty, cap));
     persistCart(
       cart
         .map((e) => (e.productId === productId ? { ...e, qty: capped } : e))

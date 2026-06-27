@@ -142,19 +142,22 @@ export async function createCheckout(
         select: { id: true },
       });
 
-      // 在庫引当（権威的な再チェック付き）
+      // 在庫引当（アトミックな条件付き減算）。
+      // updateMany({ where: { quantity: { gte } }, data: { decrement } }) は
+      // 単一の SQL UPDATE なので read-modify-write の競合（売り越し）が起きない。
       for (const l of lines) {
-        const inv = await tx.inventoryItem.findFirst({
-          where: { productId: l.productId, shopId: shop.id },
+        const reserved = await tx.inventoryItem.updateMany({
+          where: {
+            productId: l.productId,
+            shopId: shop.id,
+            quantity: { gte: l.qty },
+          },
+          data: { quantity: { decrement: l.qty } },
         });
-        if (!inv || inv.quantity < l.qty) {
-          // 競合で在庫が無くなった → ロールバック
+        if (reserved.count === 0) {
+          // 在庫不足（または在庫レコード無し）→ ロールバック
           throw new Error("STOCK_CONFLICT");
         }
-        await tx.inventoryItem.update({
-          where: { id: inv.id },
-          data: { quantity: inv.quantity - l.qty },
-        });
         await tx.stockMovement.create({
           data: {
             shopId: shop.id,

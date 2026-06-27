@@ -4,6 +4,7 @@ import { getStripe } from "@/helper/lib/stripe";
 import {
   finalizeOrderPaid,
   releaseOrderStock,
+  refundOrderByPaymentIntent,
 } from "@/feature/order/lib/finalizeOrder";
 
 function orderIdFromSession(session: Stripe.Checkout.Session): number | null {
@@ -56,7 +57,11 @@ export async function POST(req: NextRequest) {
         // completed は非同期決済（コンビニ/銀行振込）だと未入金で届くことがある。
         // 入金済み（payment_status === "paid"）のときだけ確定する。
         if (orderId && session.payment_status === "paid") {
-          await finalizeOrderPaid(orderId, paymentIdFromSession(session));
+          await finalizeOrderPaid(
+            orderId,
+            paymentIdFromSession(session),
+            session.id,
+          );
         }
         break;
       }
@@ -66,6 +71,16 @@ export async function POST(req: NextRequest) {
         const orderId = orderIdFromSession(session);
         // 未決済のまま失効/失敗 → 予約在庫を解放
         if (orderId) await releaseOrderStock(orderId, "cancelled");
+        break;
+      }
+      case "charge.refunded": {
+        // Stripe ダッシュボード等での返金を社内データに反映（在庫戻し・ポイント取消）
+        const charge = event.data.object as Stripe.Charge;
+        const pi =
+          typeof charge.payment_intent === "string"
+            ? charge.payment_intent
+            : (charge.payment_intent?.id ?? null);
+        if (pi) await refundOrderByPaymentIntent(pi);
         break;
       }
       default:

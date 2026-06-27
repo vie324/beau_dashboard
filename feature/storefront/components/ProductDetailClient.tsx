@@ -164,8 +164,10 @@ export function ProductDetailClient({
               </button>
               <span className="w-8 text-center tabular-nums">{qty}</span>
               <button
-                onClick={() => setQty((q) => Math.min(product.stock, q + 1))}
-                disabled={qty >= product.stock}
+                onClick={() =>
+                  setQty((q) => Math.min(Math.min(product.stock, 99), q + 1))
+                }
+                disabled={qty >= Math.min(product.stock, 99)}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-line text-muted hover:bg-elevated disabled:opacity-40"
               >
                 ＋

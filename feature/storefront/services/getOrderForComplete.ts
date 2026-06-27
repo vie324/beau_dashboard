@@ -8,11 +8,12 @@ export async function getOrderForComplete(slug: string, orderNo: string) {
   });
   if (!shop) return null;
 
+  // 公開・無認証ページ（orderNo のみで参照）なので、購入者の個人情報
+  // （氏名・連絡先・住所）は返さない。注文番号・金額・受取方法・明細のみ。
   const order = await db.order.findFirst({
     where: { orderNo, shopId: shop.id, deletedAt: null },
     select: {
       orderNo: true,
-      buyerName: true,
       fulfillment: true,
       paymentStatus: true,
       subtotal: true,

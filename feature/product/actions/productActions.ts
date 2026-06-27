@@ -281,11 +281,12 @@ export async function saveStorefrontSettings(
   const input = parsed.data;
   const shopId = await getActiveShopId();
 
-  // slug 重複チェック（他店舗と被らないように）
+  // slug 重複チェック。storeSlug はグローバル @unique なので、ソフトデリート済み
+  // 店舗も含めて衝突を検知する（deletedAt で絞らない）。
   const slug = input.storeSlug ? input.storeSlug : null;
   if (slug) {
     const dup = await db.shop.findFirst({
-      where: { storeSlug: slug, id: { not: shopId }, deletedAt: null },
+      where: { storeSlug: slug, id: { not: shopId } },
       select: { id: true },
     });
     if (dup) return { ok: false, error: "このURLスラッグは既に使われています" };
@@ -307,8 +308,12 @@ export async function saveStorefrontSettings(
         pointRatePercent: input.pointRatePercent ?? 0,
       },
     });
-  } catch {
-    return { ok: false, error: "保存に失敗しました" };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message.includes("Unique")
+        ? "このURLスラッグは既に使われています"
+        : "保存に失敗しました";
+    return { ok: false, error: msg };
   }
   revalidatePath("/products");
   return { ok: true };

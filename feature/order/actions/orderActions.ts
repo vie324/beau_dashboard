@@ -7,13 +7,9 @@ import { getCurrentUser } from "@/helper/lib/auth";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-const ALLOWED_STATUS = [
-  "received",
-  "preparing",
-  "ready",
-  "completed",
-  "cancelled",
-] as const;
+// 「cancelled」は含めない。取消は在庫戻し・ポイント取消・原子的ガードを備えた
+// cancelOrder のみが担う。updateOrderStatus 経由の素の cancelled 化を禁止する。
+const ALLOWED_STATUS = ["received", "preparing", "ready", "completed"] as const;
 
 export async function updateOrderStatus(
   id: number,
@@ -52,23 +48,44 @@ export async function cancelOrder(id: number): Promise<ActionResult> {
 
   try {
     await db.$transaction(async (tx) => {
-      const order = await tx.order.findFirst({
-        where: { id, shopId, deletedAt: null },
+      // --- 原子的な確定権の取得（read-then-act 競合の回避）---
+      // 先に paymentStatus 別の条件付き updateMany で取消権を取り、その結果から
+      // wasPaid を判定する。これにより finalizeOrderPaid（pending→paid）との
+      // 競合時も、paymentStatus を pending のまま残さず（= 後追いの paid 付与を
+      // 防ぎ）、paid 済みなら確実に refunded へ遷移できる。
+      const claimPaid = await tx.order.updateMany({
+        where: {
+          id,
+          shopId,
+          deletedAt: null,
+          status: { not: "cancelled" },
+          paymentStatus: "paid",
+        },
+        data: { status: "cancelled", paymentStatus: "refunded" },
+      });
+      const claimUnpaid =
+        claimPaid.count === 0
+          ? await tx.order.updateMany({
+              where: {
+                id,
+                shopId,
+                deletedAt: null,
+                status: { not: "cancelled" },
+                paymentStatus: "pending",
+              },
+              data: { status: "cancelled", paymentStatus: "cancelled" },
+            })
+          : { count: 0 };
+
+      if (claimPaid.count === 0 && claimUnpaid.count === 0) {
+        return; // 既に取消/返金済み、または確定不能
+      }
+
+      const order = await tx.order.findUnique({
+        where: { id },
         include: { items: true, pointTransactions: true },
       });
-      if (!order) throw new Error("注文が見つかりません");
-
-      const wasPaid = order.paymentStatus === "paid";
-
-      // cancelled でない行だけを取消に遷移（取れた1回だけが副作用を実行）
-      const claim = await tx.order.updateMany({
-        where: { id, shopId, status: { not: "cancelled" }, deletedAt: null },
-        data: {
-          status: "cancelled",
-          paymentStatus: wasPaid ? "refunded" : "cancelled",
-        },
-      });
-      if (claim.count === 0) return; // 既に取消済み
+      if (!order) return;
 
       // 予約在庫を戻す（competition-safe な increment）
       for (const item of order.items) {

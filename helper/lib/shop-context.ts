@@ -28,6 +28,18 @@ export async function getActiveBrandId(): Promise<number> {
  */
 export async function getActiveShopId(): Promise<number> {
   const brandId = await getActiveBrandId();
+
+  // shop / staff ロールは所属店舗(user.shopId)に固定する。cookie で同一ブランド内の
+  // 別店舗へ越境できないようにする。店舗切替が許されるのは root / brand のみ。
+  const user = await getCurrentUser();
+  if (user && (user.role === "shop" || user.role === "staff") && user.shopId) {
+    const own = await db.shop.findFirst({
+      where: { id: user.shopId, brandId, deletedAt: null },
+      select: { id: true },
+    });
+    if (own) return own.id;
+  }
+
   const store = await cookies();
   const raw = store.get(ACTIVE_SHOP_COOKIE)?.value;
 
