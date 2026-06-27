@@ -8,6 +8,8 @@ import { cn } from "@/helper/utils/cn";
 const LINKS = [
   { href: "/reservation", label: "予約管理" },
   { href: "/customers", label: "顧客" },
+  { href: "/products", label: "物販" },
+  { href: "/orders", label: "注文" },
   { href: "/booking-links", label: "予約リンク" },
   { href: "/settings", label: "設定" },
   { href: "/help", label: "ヘルプ" },

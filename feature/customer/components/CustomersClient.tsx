@@ -135,6 +135,17 @@ export function CustomersClient({
                         最終：{dateFmt.format(new Date(c.lastVisitAt))}
                       </span>
                     )}
+                    {c.purchaseCount > 0 && (
+                      <span className="text-ink">
+                        物販：{c.purchaseCount}件 / ¥
+                        {c.purchaseTotal.toLocaleString("ja-JP")}
+                      </span>
+                    )}
+                    {c.pointsBalance > 0 && (
+                      <span className="rounded-md border border-accent/40 bg-accent-soft px-1.5 text-accent">
+                        {c.pointsBalance.toLocaleString("ja-JP")}pt
+                      </span>
+                    )}
                   </div>
                   {c.note && (
                     <div className="mt-1 truncate text-xs text-faint">
