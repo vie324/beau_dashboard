@@ -26,6 +26,7 @@ export function StorefrontSettingsModal({
     storeTitle: shop.storeTitle ?? "",
     storeDescription: shop.storeDescription ?? "",
     shippingFee: String(shop.shippingFee),
+    freeShippingThreshold: String(shop.freeShippingThreshold),
     pointRatePercent: String(shop.pointRatePercent),
   });
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -40,6 +41,7 @@ export function StorefrontSettingsModal({
     if (form.storeDescription.trim())
       fd.set("storeDescription", form.storeDescription.trim());
     fd.set("shippingFee", form.shippingFee.trim() || "0");
+    fd.set("freeShippingThreshold", form.freeShippingThreshold.trim() || "0");
     fd.set("pointRatePercent", form.pointRatePercent.trim() || "0");
 
     startTransition(async () => {
@@ -118,6 +120,20 @@ export function StorefrontSettingsModal({
               税抜小計の％を付与。0で無効（1pt=1円）
             </p>
           </div>
+        </div>
+
+        <div>
+          <Label>送料無料になる購入金額（円）</Label>
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={form.freeShippingThreshold}
+            onChange={(e) => set("freeShippingThreshold", e.target.value)}
+            min={0}
+          />
+          <p className="mt-1 text-xs text-faint">
+            税込のお買い上げ合計がこの金額以上で送料無料。0で無効。
+          </p>
         </div>
 
         <label className="flex items-center gap-2 text-sm text-ink">

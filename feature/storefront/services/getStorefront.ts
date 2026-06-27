@@ -3,7 +3,12 @@ import { db } from "@/helper/lib/db";
 /** 公開ストアフロント（/shop/<slug>）のデータを取得。非公開・無効なら null。 */
 export async function getStorefront(slug: string) {
   const shop = await db.shop.findFirst({
-    where: { storeSlug: slug, storeActive: true, deletedAt: null },
+    where: {
+      storeSlug: slug,
+      storeActive: true,
+      deletedAt: null,
+      NOT: { storeSlug: null },
+    },
     select: {
       id: true,
       name: true,
@@ -11,10 +16,14 @@ export async function getStorefront(slug: string) {
       storeTitle: true,
       storeDescription: true,
       shippingFee: true,
+      freeShippingThreshold: true,
       pointRatePercent: true,
+      legalInfo: true,
+      address: true,
+      phone: true,
     },
   });
-  if (!shop) return null;
+  if (!shop || !shop.storeSlug) return null;
 
   const [products, categories] = await Promise.all([
     db.product.findMany({

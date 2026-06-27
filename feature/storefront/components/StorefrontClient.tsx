@@ -17,6 +17,7 @@ import {
   formatYen,
   taxInclusiveUnit,
   parseImageUrls,
+  effectiveShipping,
 } from "@/helper/utils/retail";
 
 export function StorefrontClient({
@@ -33,6 +34,7 @@ export function StorefrontClient({
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // localStorage からカートを読み込み
@@ -57,11 +59,16 @@ export function StorefrontClient({
     const next = [...cart];
     const found = next.find((e) => e.productId === productId);
     const current = found?.qty ?? 0;
-    if (current >= p.stock) return; // 在庫上限
+    if (current >= p.stock) {
+      setToast("在庫の上限です");
+      window.setTimeout(() => setToast(null), 1800);
+      return;
+    }
     if (found) found.qty = current + 1;
     else next.push({ productId, qty: 1 });
     persist(next);
-    setCartOpen(true);
+    setToast(`「${p.name}」をカートに追加しました`);
+    window.setTimeout(() => setToast(null), 1800);
   }
 
   function setQty(productId: number, qty: number) {
@@ -86,6 +93,14 @@ export function StorefrontClient({
     0,
   );
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
+  const subtotalExcl = cartLines.reduce(
+    (s, l) => s + l.product.price * l.qty,
+    0,
+  );
+  const freeShipRemaining =
+    shop.freeShippingThreshold > 0 && shop.shippingFee > 0
+      ? Math.max(0, shop.freeShippingThreshold - subtotalIncl)
+      : 0;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -140,7 +155,7 @@ export function StorefrontClient({
             return (
               <div
                 key={p.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-panel"
+                className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-panel transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg"
               >
                 <a
                   href={`/shop/${shop.storeSlug}/item/${p.id}`}
@@ -248,6 +263,11 @@ export function StorefrontClient({
                 </li>
               ))}
             </ul>
+            {freeShipRemaining > 0 && (
+              <p className="rounded-lg bg-accent-soft px-3 py-2 text-center text-xs text-accent-fg">
+                あと <span className="font-semibold">{formatYen(freeShipRemaining)}</span> で配送料無料
+              </p>
+            )}
             <div className="flex items-center justify-between border-t border-line pt-3 text-sm">
               <span className="text-muted">小計（税込）</span>
               <span className="text-lg font-semibold tabular-nums text-ink">
@@ -256,7 +276,9 @@ export function StorefrontClient({
             </div>
             {shop.pointRatePercent > 0 && (
               <p className="text-xs text-accent">
-                ご購入で約 {Math.floor((cartLines.reduce((s, l) => s + l.product.price * l.qty, 0) * shop.pointRatePercent) / 100)} ポイント付与
+                ご購入で約{" "}
+                {Math.floor((subtotalExcl * shop.pointRatePercent) / 100)}{" "}
+                ポイント付与
               </p>
             )}
             <Button
@@ -273,11 +295,20 @@ export function StorefrontClient({
       </Modal>
 
       {/* チェックアウトフォーム */}
+      {toast && (
+        <div className="fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
+          <div className="animate-fade-in rounded-full bg-ink/90 px-4 py-2 text-sm text-surface shadow-panel">
+            {toast}
+          </div>
+        </div>
+      )}
+
       <CheckoutForm
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
         slug={shop.storeSlug!}
         shippingFee={shop.shippingFee}
+        freeShippingThreshold={shop.freeShippingThreshold}
         subtotalIncl={subtotalIncl}
         items={cart}
         error={error}
@@ -329,6 +360,7 @@ function CheckoutForm({
   onClose,
   slug,
   shippingFee,
+  freeShippingThreshold,
   subtotalIncl,
   items,
   error,
@@ -340,6 +372,7 @@ function CheckoutForm({
   onClose: () => void;
   slug: string;
   shippingFee: number;
+  freeShippingThreshold: number;
   subtotalIncl: number;
   items: CartEntry[];
   error: string | null;
@@ -369,7 +402,11 @@ function CheckoutForm({
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const ship = form.fulfillment === "shipping" ? shippingFee : 0;
+  const ship = effectiveShipping(
+    form.fulfillment === "shipping" ? shippingFee : 0,
+    subtotalIncl,
+    freeShippingThreshold,
+  );
   const total = subtotalIncl + ship;
 
   function submit() {
@@ -445,9 +482,11 @@ function CheckoutForm({
               set("fulfillment", e.target.value as "pickup" | "shipping")
             }
           >
-            <option value="pickup">店頭で受け取る</option>
+            <option value="pickup">店頭で受け取る（送料無料）</option>
             <option value="shipping">
-              配送（送料 {formatYen(shippingFee)}）
+              {freeShippingThreshold > 0 && subtotalIncl >= freeShippingThreshold
+                ? "配送（送料無料）"
+                : `配送（送料 ${formatYen(shippingFee)}）`}
             </option>
           </Select>
         </div>

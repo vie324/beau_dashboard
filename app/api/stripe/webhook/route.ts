@@ -1,7 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/helper/lib/stripe";
-import { finalizeOrderPaid } from "@/feature/order/lib/finalizeOrder";
+import {
+  finalizeOrderPaid,
+  releaseOrderStock,
+} from "@/feature/order/lib/finalizeOrder";
+
+function orderIdFromSession(session: Stripe.Checkout.Session): number | null {
+  const id = Number(session.metadata?.orderId);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function paymentIdFromSession(session: Stripe.Checkout.Session): string | null {
+  return typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : (session.payment_intent?.id ?? null);
+}
 
 // Webhook は生のリクエストボディで署名検証するため、Edge/最適化を無効化。
 export const runtime = "nodejs";
@@ -34,16 +48,28 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const orderId = Number(session.metadata?.orderId);
-      if (Number.isInteger(orderId) && orderId > 0) {
-        const paymentId =
-          typeof session.payment_intent === "string"
-            ? session.payment_intent
-            : (session.payment_intent?.id ?? null);
-        await finalizeOrderPaid(orderId, paymentId);
+    switch (event.type) {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const orderId = orderIdFromSession(session);
+        // completed は非同期決済（コンビニ/銀行振込）だと未入金で届くことがある。
+        // 入金済み（payment_status === "paid"）のときだけ確定する。
+        if (orderId && session.payment_status === "paid") {
+          await finalizeOrderPaid(orderId, paymentIdFromSession(session));
+        }
+        break;
       }
+      case "checkout.session.expired":
+      case "checkout.session.async_payment_failed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const orderId = orderIdFromSession(session);
+        // 未決済のまま失効/失敗 → 予約在庫を解放
+        if (orderId) await releaseOrderStock(orderId, "cancelled");
+        break;
+      }
+      default:
+        break;
     }
   } catch (err) {
     // 失敗時は 500 を返して Stripe にリトライさせる（finalize は冪等）。

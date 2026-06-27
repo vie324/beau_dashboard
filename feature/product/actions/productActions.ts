@@ -9,8 +9,8 @@ import {
   categorySchema,
   stockAdjustSchema,
   storefrontSettingsSchema,
+  legalInfoSchema,
 } from "@/feature/product/schema/productSchema";
-import { parseImageUrls } from "@/helper/utils/retail";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -303,9 +303,39 @@ export async function saveStorefrontSettings(
         storeTitle: input.storeTitle ?? null,
         storeDescription: input.storeDescription ?? null,
         shippingFee: input.shippingFee ?? 0,
+        freeShippingThreshold: input.freeShippingThreshold ?? 0,
         pointRatePercent: input.pointRatePercent ?? 0,
       },
     });
+  } catch {
+    return { ok: false, error: "保存に失敗しました" };
+  }
+  revalidatePath("/products");
+  return { ok: true };
+}
+
+export async function saveLegalInfo(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
+  const raw = Object.fromEntries(formData.entries());
+  for (const k of Object.keys(raw)) if (raw[k] === "") delete raw[k];
+  const parsed = legalInfoSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "入力内容を確認してください",
+    };
+  }
+  const shopId = await getActiveShopId();
+  // null/空を除いて JSON 化（空オブジェクトなら null 保存）
+  const entries = Object.entries(parsed.data).filter(
+    ([, v]) => v != null && String(v).trim() !== "",
+  );
+  const json = entries.length ? JSON.stringify(Object.fromEntries(entries)) : null;
+  try {
+    await db.shop.update({ where: { id: shopId }, data: { legalInfo: json } });
   } catch {
     return { ok: false, error: "保存に失敗しました" };
   }

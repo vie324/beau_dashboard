@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getStorefrontProduct } from "@/feature/storefront/services/getStorefront";
 import { AddToCartButton } from "@/feature/storefront/components/AddToCartButton";
 import { StoreUnavailable } from "@/feature/storefront/components/StoreUnavailable";
@@ -5,6 +6,33 @@ import { Badge } from "@/components/ui/Badge";
 import { formatYen, taxInclusiveUnit, parseImageUrls } from "@/helper/utils/retail";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string; productId: string }>;
+}): Promise<Metadata> {
+  const { slug, productId } = await params;
+  const id = Number(productId);
+  if (!Number.isInteger(id)) return { title: "商品" };
+  const data = await getStorefrontProduct(slug, id);
+  if (!data) return { title: "商品" };
+  const { product } = data;
+  const img = parseImageUrls(product.imageUrls)[0];
+  const description =
+    product.description?.slice(0, 120) ||
+    `${product.name} を販売中。${formatYen(taxInclusiveUnit(product.price, product.taxRate))}（税込）`;
+  return {
+    title: product.name,
+    description,
+    openGraph: {
+      title: product.name,
+      description,
+      type: "website",
+      images: img ? [{ url: img }] : undefined,
+    },
+  };
+}
 
 export default async function StorefrontItemPage({
   params,

@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+// z.coerce.boolean() は "false" 等の非空文字列も true にしてしまうため使わない。
+// チェックボックス由来の値（"on"/"true"/true/"1"）だけを true とみなす。
+const boolish = z.preprocess(
+  (v) => v === true || v === "true" || v === "on" || v === "1",
+  z.boolean(),
+);
+
 export const productSchema = z.object({
   id: z.coerce.number().int().positive().optional(),
   name: z
@@ -22,10 +29,16 @@ export const productSchema = z.object({
     .max(10_000_000)
     .optional()
     .default(0),
-  taxRate: z.coerce.number().int().min(0).max(20).optional().default(10),
+  // 消費税率は 標準10% / 軽減8% / 非課税0% のみ許可
+  taxRate: z.coerce
+    .number()
+    .int()
+    .refine((v) => v === 0 || v === 8 || v === 10, "税率は0/8/10%のいずれかです")
+    .optional()
+    .default(10),
   // 改行区切りの画像URL（フォーム入力）→ action 側で JSON 配列に変換
   imageUrlsText: z.string().trim().max(4000).optional().nullable(),
-  isPublic: z.coerce.boolean().optional().default(true),
+  isPublic: boolish.optional().default(true),
   // 新規作成時の初期在庫・発注点
   initialStock: z.coerce.number().int().min(0).max(1_000_000).optional(),
   safetyStock: z.coerce.number().int().min(0).max(1_000_000).optional(),
@@ -50,7 +63,7 @@ export const stockAdjustSchema = z.object({
 });
 
 export const storefrontSettingsSchema = z.object({
-  storeActive: z.coerce.boolean().optional().default(false),
+  storeActive: boolish.optional().default(false),
   storeSlug: z
     .string()
     .trim()
@@ -64,5 +77,27 @@ export const storefrontSettingsSchema = z.object({
   storeTitle: z.string().trim().max(120).optional().nullable(),
   storeDescription: z.string().trim().max(1000).optional().nullable(),
   shippingFee: z.coerce.number().int().min(0).max(1_000_000).optional().default(0),
+  freeShippingThreshold: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10_000_000)
+    .optional()
+    .default(0),
   pointRatePercent: z.coerce.number().int().min(0).max(100).optional().default(0),
 });
+
+export const legalInfoSchema = z.object({
+  sellerName: z.string().trim().max(120).optional().nullable(),
+  manager: z.string().trim().max(80).optional().nullable(),
+  address: z.string().trim().max(200).optional().nullable(),
+  phone: z.string().trim().max(40).optional().nullable(),
+  email: z.string().trim().max(120).optional().nullable(),
+  hours: z.string().trim().max(120).optional().nullable(),
+  extraFees: z.string().trim().max(300).optional().nullable(),
+  paymentMethods: z.string().trim().max(200).optional().nullable(),
+  deliveryTime: z.string().trim().max(200).optional().nullable(),
+  returnPolicy: z.string().trim().max(1000).optional().nullable(),
+});
+
+export type LegalInfo = z.infer<typeof legalInfoSchema>;

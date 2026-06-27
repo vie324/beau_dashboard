@@ -9,6 +9,7 @@ import { ProductForm } from "@/feature/product/components/ProductForm";
 import { StockAdjustModal } from "@/feature/product/components/StockAdjustModal";
 import { CategoryManagerModal } from "@/feature/product/components/CategoryManagerModal";
 import { StorefrontSettingsModal } from "@/feature/product/components/StorefrontSettingsModal";
+import { LegalInfoModal } from "@/feature/product/components/LegalInfoModal";
 import { deleteProduct } from "@/feature/product/actions/productActions";
 import type {
   ProductRow,
@@ -51,6 +52,7 @@ export function ProductsClient({
   const [stockFor, setStockFor] = useState<ProductRow | null>(null);
   const [showCats, setShowCats] = useState(false);
   const [showStore, setShowStore] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -107,17 +109,24 @@ export function ProductsClient({
               </p>
             )}
             <p className="mt-1 text-xs text-muted">
-              送料 {formatYen(shop.shippingFee)} ／ ポイント付与 {shop.pointRatePercent}%
+              送料 {formatYen(shop.shippingFee)}
+              {shop.freeShippingThreshold > 0 &&
+                `（${formatYen(shop.freeShippingThreshold)}以上で無料）`}
+              {" ／ "}ポイント付与 {shop.pointRatePercent}%
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowStore(true)}
-            className="shrink-0"
-          >
-            販売ページ設定
-          </Button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowLegal(true)}
+            >
+              特商法の表記
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowStore(true)}>
+              販売ページ設定
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -324,6 +333,13 @@ export function ProductsClient({
           open
           shop={shop}
           onClose={() => setShowStore(false)}
+        />
+      )}
+      {showLegal && (
+        <LegalInfoModal
+          open
+          legalInfo={shop.legalInfo}
+          onClose={() => setShowLegal(false)}
         />
       )}
     </>

@@ -12,7 +12,11 @@ export async function getShopRetail(shopId: number) {
       storeTitle: true,
       storeDescription: true,
       shippingFee: true,
+      freeShippingThreshold: true,
       pointRatePercent: true,
+      legalInfo: true,
+      address: true,
+      phone: true,
     },
   });
   return shop;

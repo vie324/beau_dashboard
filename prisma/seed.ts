@@ -72,7 +72,21 @@ async function main() {
       storeDescription:
         "店頭でも人気のセルフケアグッズをオンラインでも。会員番号のご入力でポイントが貯まります。",
       shippingFee: 600,
+      freeShippingThreshold: 5000,
       pointRatePercent: 5,
+      legalInfo: JSON.stringify({
+        sellerName: "Beau 銀座本店",
+        manager: "佐藤 美咲",
+        address: "〒104-0061 東京都中央区銀座1-1-1",
+        phone: "03-1234-5678",
+        email: "shop@beau-ginza.example.com",
+        hours: "平日 10:00〜19:00（土日祝を除く）",
+        paymentMethods: "クレジットカード決済（Stripe）",
+        deliveryTime:
+          "ご注文・ご入金確認後3〜5営業日以内に発送。店頭受取は翌営業日以降にご用意します。",
+        returnPolicy:
+          "商品到着後7日以内、未使用・未開封品に限り返品を承ります。不良品・誤発送の場合は当店負担で交換いたします。",
+      }),
     },
   });
 

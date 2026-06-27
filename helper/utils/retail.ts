@@ -26,13 +26,31 @@ export type OrderTotals = {
 };
 
 /**
+ * 配送時の実送料を求める。送料無料しきい値（税込商品合計が threshold 以上で無料）を考慮。
+ * pickup（店頭受取）など送料不要のケースは baseShippingFee=0 を渡すこと。
+ */
+export function effectiveShipping(
+  baseShippingFee: number,
+  itemsTotalIncl: number,
+  freeShippingThreshold: number,
+): number {
+  if (baseShippingFee <= 0) return 0;
+  if (freeShippingThreshold > 0 && itemsTotalIncl >= freeShippingThreshold)
+    return 0;
+  return baseShippingFee;
+}
+
+/**
  * カート行 + 送料 + ポイント付与率 から金額を確定する。
  * 税は税込単価ベースで行ごとに丸めるため、Stripe の line_items と完全一致する。
+ * baseShippingFee は「配送が選ばれている場合の送料」。pickup のときは 0 を渡す。
+ * freeShippingThreshold > 0 かつ 税込商品合計が threshold 以上なら送料無料。
  */
 export function computeTotals(
   lines: CartLine[],
-  shippingFee: number,
+  baseShippingFee: number,
   pointRatePercent: number,
+  freeShippingThreshold = 0,
 ): OrderTotals {
   let subtotal = 0;
   let itemsTotal = 0;
@@ -42,10 +60,29 @@ export function computeTotals(
     itemsTotal += unitIncl * l.qty;
   }
   const taxTotal = itemsTotal - subtotal;
+  const shippingFee = effectiveShipping(
+    baseShippingFee,
+    itemsTotal,
+    freeShippingThreshold,
+  );
   const total = itemsTotal + shippingFee;
   const pointsEarned =
     pointRatePercent > 0 ? Math.floor((subtotal * pointRatePercent) / 100) : 0;
   return { subtotal, taxTotal, itemsTotal, shippingFee, total, pointsEarned };
+}
+
+/** legalInfo(JSON文字列) を安全にパース。 */
+export function parseLegalInfo(
+  raw: string | null | undefined,
+): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === "object") return v as Record<string, string>;
+  } catch {
+    /* ignore */
+  }
+  return {};
 }
 
 const yen = new Intl.NumberFormat("ja-JP", {
