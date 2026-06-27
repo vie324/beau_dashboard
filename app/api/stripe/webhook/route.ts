@@ -74,8 +74,11 @@ export async function POST(req: NextRequest) {
         break;
       }
       case "charge.refunded": {
-        // Stripe ダッシュボード等での返金を社内データに反映（在庫戻し・ポイント取消）
+        // Stripe ダッシュボード等での返金を社内データに反映（在庫戻し・ポイント取消）。
+        // charge.refunded は「全額返金」のときのみ true。部分返金では false なので、
+        // 在庫・ポイントを全額巻き戻さないようここで弾く（部分返金は手動運用）。
         const charge = event.data.object as Stripe.Charge;
+        if (!charge.refunded) break;
         const pi =
           typeof charge.payment_intent === "string"
             ? charge.payment_intent

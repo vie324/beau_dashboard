@@ -49,35 +49,53 @@ export async function cancelOrder(id: number): Promise<ActionResult> {
   try {
     await db.$transaction(async (tx) => {
       // --- 原子的な確定権の取得（read-then-act 競合の回避）---
-      // 先に paymentStatus 別の条件付き updateMany で取消権を取り、その結果から
-      // wasPaid を判定する。これにより finalizeOrderPaid（pending→paid）との
-      // 競合時も、paymentStatus を pending のまま残さず（= 後追いの paid 付与を
-      // 防ぎ）、paid 済みなら確実に refunded へ遷移できる。
-      const claimPaid = await tx.order.updateMany({
-        where: {
-          id,
-          shopId,
-          deletedAt: null,
-          status: { not: "cancelled" },
-          paymentStatus: "paid",
-        },
-        data: { status: "cancelled", paymentStatus: "refunded" },
-      });
-      const claimUnpaid =
-        claimPaid.count === 0
-          ? await tx.order.updateMany({
-              where: {
-                id,
-                shopId,
-                deletedAt: null,
-                status: { not: "cancelled" },
-                paymentStatus: "pending",
-              },
-              data: { status: "cancelled", paymentStatus: "cancelled" },
-            })
-          : { count: 0 };
-
-      if (claimPaid.count === 0 && claimUnpaid.count === 0) {
+      // paymentStatus 別の条件付き updateMany で取消権を取り、確定値から副作用を算出する。
+      // これにより finalizeOrderPaid（pending→paid）と競合しても、paymentStatus を
+      // pending のまま残さず（後追いの paid 付与を防止）、paid 済みなら refunded に遷移する。
+      //
+      // 2文（paid 用 / pending 用）の間に finalize が pending→paid をコミットすると
+      // 両方 0 件になり得る（キャンセル消失窓）。その場合は現在値を読み直し、paid へ
+      // 遷移していれば paid 経路を再試行してこの窓を塞ぐ（最大3回）。
+      let claimed = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const claimPaid = await tx.order.updateMany({
+          where: {
+            id,
+            shopId,
+            deletedAt: null,
+            status: { not: "cancelled" },
+            paymentStatus: "paid",
+          },
+          data: { status: "cancelled", paymentStatus: "refunded" },
+        });
+        if (claimPaid.count > 0) {
+          claimed = true;
+          break;
+        }
+        const claimUnpaid = await tx.order.updateMany({
+          where: {
+            id,
+            shopId,
+            deletedAt: null,
+            status: { not: "cancelled" },
+            paymentStatus: "pending",
+          },
+          data: { status: "cancelled", paymentStatus: "cancelled" },
+        });
+        if (claimUnpaid.count > 0) {
+          claimed = true;
+          break;
+        }
+        // 両方 0: 既に取消/返金済み、または直前に paid 化された。現在値を確認。
+        const cur = await tx.order.findUnique({
+          where: { id },
+          select: { status: true, paymentStatus: true },
+        });
+        if (!cur || cur.status === "cancelled") break; // 既に終端
+        if (cur.paymentStatus !== "paid") break; // pending でも paid でもない → 対象外
+        // paid に遷移していた → 次ループの claimPaid が成功する
+      }
+      if (!claimed) {
         return; // 既に取消/返金済み、または確定不能
       }
 
