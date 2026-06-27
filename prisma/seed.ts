@@ -37,6 +37,7 @@ async function main() {
   await db.pointTransaction.deleteMany();
   await db.orderItem.deleteMany();
   await db.order.deleteMany();
+  await db.productReview.deleteMany();
   await db.stockMovement.deleteMany();
   await db.inventoryItem.deleteMany();
   await db.product.deleteMany();
@@ -384,8 +385,9 @@ async function main() {
     },
   ];
 
+  const createdProducts = [];
   for (const p of productSeed) {
-    await db.product.create({
+    const created = await db.product.create({
       data: {
         shopId: ginza.id,
         categoryId: p.categoryId,
@@ -407,6 +409,28 @@ async function main() {
             reason: "初期在庫",
           },
         },
+      },
+    });
+    createdProducts.push(created);
+  }
+
+  // サンプルレビュー（最初の2商品）
+  const reviewSeed = [
+    { i: 0, authorName: "マイ", rating: 5, title: "腰がラクになりました", comment: "長時間のデスクワークでもしっかり支えてくれます。通気性も良く蒸れません。" },
+    { i: 0, authorName: "ショウ", rating: 4, title: "コスパ良し", comment: "サイズ感もちょうどよく、装着も簡単でした。" },
+    { i: 2, authorName: "さくら", rating: 5, title: "ぐっすり眠れます", comment: "首の負担が減って朝の肩こりが軽くなりました。高さ調整できるのも嬉しい。" },
+  ];
+  for (const r of reviewSeed) {
+    const prod = createdProducts[r.i];
+    if (!prod) continue;
+    await db.productReview.create({
+      data: {
+        shopId: ginza.id,
+        productId: prod.id,
+        authorName: r.authorName,
+        rating: r.rating,
+        title: r.title,
+        comment: r.comment,
       },
     });
   }

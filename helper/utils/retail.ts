@@ -60,11 +60,11 @@ export function computeTotals(
     itemsTotal += unitIncl * l.qty;
   }
   const taxTotal = itemsTotal - subtotal;
-  const shippingFee = effectiveShipping(
-    baseShippingFee,
-    itemsTotal,
-    freeShippingThreshold,
-  );
+  // 商品が無ければ送料も発生しない（空カードへの送料加算を防ぐ）。
+  const shippingFee =
+    lines.length === 0
+      ? 0
+      : effectiveShipping(baseShippingFee, itemsTotal, freeShippingThreshold);
   const total = itemsTotal + shippingFee;
   const pointsEarned =
     pointRatePercent > 0 ? Math.floor((subtotal * pointRatePercent) / 100) : 0;

@@ -4,21 +4,25 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea, Select } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
 import type { StorefrontData } from "@/feature/storefront/services/getStorefront";
 import { createCheckout } from "@/feature/storefront/actions/checkoutActions";
+import { ProductCard } from "@/feature/storefront/components/ProductCard";
+import { CartDrawer } from "@/feature/storefront/components/CartDrawer";
 import {
   readCart,
   writeCart,
   clearCart,
   type CartEntry,
 } from "@/feature/storefront/lib/cart";
+import { readWishlist, toggleWishlist } from "@/feature/storefront/lib/wishlist";
+import { readRecentlyViewed } from "@/feature/storefront/lib/recentlyViewed";
 import {
   formatYen,
   taxInclusiveUnit,
-  parseImageUrls,
   effectiveShipping,
 } from "@/helper/utils/retail";
+
+type SortKey = "recommended" | "price-asc" | "price-desc" | "new";
 
 export function StorefrontClient({
   data,
@@ -28,29 +32,40 @@ export function StorefrontClient({
   openCartInitially?: boolean;
 }) {
   const { shop, products, categories } = data;
+  const slug = shop.storeSlug as string;
+
   const [cart, setCart] = useState<CartEntry[]>([]);
+  const [wishlist, setWishlist] = useState<number[]>([]);
+  const [recent, setRecent] = useState<number[]>([]);
   const [query, setQuery] = useState("");
-  const [activeCat, setActiveCat] = useState<number | "all">("all");
+  const [activeCat, setActiveCat] = useState<number | "all" | "wish">("all");
+  const [sort, setSort] = useState<SortKey>("recommended");
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // localStorage からカートを読み込み
   useEffect(() => {
-    setCart(readCart(shop.storeSlug!));
+    setCart(readCart(slug));
+    setWishlist(readWishlist(slug));
+    setRecent(readRecentlyViewed(slug));
     if (openCartInitially) setCartOpen(true);
-  }, [shop.storeSlug, openCartInitially]);
+  }, [slug, openCartInitially]);
 
   const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
     [products],
   );
 
-  function persist(next: CartEntry[]) {
+  function persistCart(next: CartEntry[]) {
     setCart(next);
-    writeCart(shop.storeSlug!, next);
+    writeCart(slug, next);
+  }
+
+  function flashToast(msg: string) {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 1800);
   }
 
   function add(productId: number) {
@@ -60,31 +75,33 @@ export function StorefrontClient({
     const found = next.find((e) => e.productId === productId);
     const current = found?.qty ?? 0;
     if (current >= p.stock) {
-      setToast("在庫の上限です");
-      window.setTimeout(() => setToast(null), 1800);
+      flashToast("在庫の上限です");
       return;
     }
     if (found) found.qty = current + 1;
     else next.push({ productId, qty: 1 });
-    persist(next);
-    setToast(`「${p.name}」をカートに追加しました`);
-    window.setTimeout(() => setToast(null), 1800);
+    persistCart(next);
+    flashToast(`「${p.name}」をカートに追加しました`);
   }
 
   function setQty(productId: number, qty: number) {
     const p = productById.get(productId);
     const capped = Math.max(0, Math.min(qty, p?.stock ?? 0));
-    const next = cart
-      .map((e) => (e.productId === productId ? { ...e, qty: capped } : e))
-      .filter((e) => e.qty > 0);
-    persist(next);
+    persistCart(
+      cart
+        .map((e) => (e.productId === productId ? { ...e, qty: capped } : e))
+        .filter((e) => e.qty > 0),
+    );
+  }
+
+  function toggleWish(productId: number) {
+    setWishlist(toggleWishlist(slug, productId));
   }
 
   const cartLines = cart
     .map((e) => {
-      const p = productById.get(e.productId);
-      if (!p) return null;
-      return { ...e, product: p };
+      const product = productById.get(e.productId);
+      return product ? { ...e, product } : null;
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
@@ -92,221 +109,192 @@ export function StorefrontClient({
     (s, l) => s + taxInclusiveUnit(l.product.price, l.product.taxRate) * l.qty,
     0,
   );
+  const subtotalExcl = cartLines.reduce((s, l) => s + l.product.price * l.qty, 0);
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
-  const subtotalExcl = cartLines.reduce(
-    (s, l) => s + l.product.price * l.qty,
-    0,
-  );
   const freeShipRemaining =
     shop.freeShippingThreshold > 0 && shop.shippingFee > 0
       ? Math.max(0, shop.freeShippingThreshold - subtotalIncl)
       : 0;
 
+  const wishSet = useMemo(() => new Set(wishlist), [wishlist]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return products.filter((p) => {
-      if (activeCat !== "all" && p.categoryId !== activeCat) return false;
+    let list = products.filter((p) => {
+      if (activeCat === "wish") {
+        if (!wishSet.has(p.id)) return false;
+      } else if (activeCat !== "all" && p.categoryId !== activeCat) {
+        return false;
+      }
       if (!q) return true;
       return (
         p.name.toLowerCase().includes(q) ||
         (p.description ?? "").toLowerCase().includes(q)
       );
     });
-  }, [products, query, activeCat]);
+    list = [...list];
+    switch (sort) {
+      case "price-asc":
+        list.sort((a, b) => a.price - b.price);
+        break;
+      case "price-desc":
+        list.sort((a, b) => b.price - a.price);
+        break;
+      case "new":
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        break;
+      default:
+        break; // recommended = サーバの並び（sortNumber）
+    }
+    return list;
+  }, [products, query, activeCat, sort, wishSet]);
+
+  const recentProducts = recent
+    .map((id) => productById.get(id))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
   return (
     <>
-      {/* カテゴリ + 検索 */}
+      {/* ツールバー */}
       <div className="mb-5 space-y-3">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="商品を検索"
-        />
-        {categories.length > 0 && (
-          <div className="no-scrollbar flex gap-2 overflow-x-auto">
+        <div className="flex gap-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="商品を検索"
+            className="flex-1"
+          />
+          <Select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="w-36 shrink-0"
+          >
+            <option value="recommended">おすすめ順</option>
+            <option value="new">新着順</option>
+            <option value="price-asc">価格が安い順</option>
+            <option value="price-desc">価格が高い順</option>
+          </Select>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+          <CatChip
+            active={activeCat === "all"}
+            onClick={() => setActiveCat("all")}
+            label="すべて"
+          />
+          {wishlist.length > 0 && (
             <CatChip
-              active={activeCat === "all"}
-              onClick={() => setActiveCat("all")}
-              label="すべて"
+              active={activeCat === "wish"}
+              onClick={() => setActiveCat("wish")}
+              label={`♥ お気に入り (${wishlist.length})`}
             />
-            {categories.map((c) => (
-              <CatChip
-                key={c.id}
-                active={activeCat === c.id}
-                onClick={() => setActiveCat(c.id)}
-                label={c.name}
-              />
-            ))}
-          </div>
-        )}
+          )}
+          {categories.map((c) => (
+            <CatChip
+              key={c.id}
+              active={activeCat === c.id}
+              onClick={() => setActiveCat(c.id)}
+              label={c.name}
+            />
+          ))}
+        </div>
       </div>
 
       {/* 商品グリッド */}
       {filtered.length === 0 ? (
-        <p className="rounded-xl border border-line bg-surface px-4 py-10 text-center text-sm text-muted">
-          商品が見つかりません。
+        <p className="rounded-xl border border-line bg-surface px-4 py-12 text-center text-sm text-muted">
+          {activeCat === "wish"
+            ? "お気に入りに登録した商品がありません。♡ をタップして追加できます。"
+            : "商品が見つかりません。"}
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          {filtered.map((p) => {
-            const img = parseImageUrls(p.imageUrls)[0];
-            const sold = p.stock <= 0;
-            return (
-              <div
-                key={p.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-panel transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg"
-              >
-                <a
-                  href={`/shop/${shop.storeSlug}/item/${p.id}`}
-                  className="block aspect-square bg-elevated"
-                >
-                  {img ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={img}
-                      alt={p.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-faint">
-                      No Image
-                    </div>
-                  )}
-                </a>
-                <div className="flex flex-1 flex-col p-3">
-                  <a
-                    href={`/shop/${shop.storeSlug}/item/${p.id}`}
-                    className="line-clamp-2 text-sm font-medium text-ink hover:text-accent"
-                  >
-                    {p.name}
-                  </a>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="text-base font-semibold tabular-nums text-ink">
-                      {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
-                    </span>
-                    {sold && (
-                      <Badge className="border-line bg-elevated text-muted">
-                        在庫切れ
-                      </Badge>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    className="mt-2"
-                    disabled={sold}
-                    onClick={() => add(p.id)}
-                  >
-                    {sold ? "売り切れ" : "カートに入れる"}
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          {filtered.map((p) => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              slug={slug}
+              wished={wishSet.has(p.id)}
+              onAdd={add}
+              onToggleWish={toggleWish}
+            />
+          ))}
         </div>
       )}
 
-      {/* カートを開くフローティングボタン */}
+      {/* 最近見た商品 */}
+      {recentProducts.length > 0 && activeCat === "all" && !query && (
+        <section className="mt-10">
+          <h2 className="mb-3 text-sm font-semibold text-ink">最近見た商品</h2>
+          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
+            {recentProducts.map((p) => (
+              <a
+                key={p.id}
+                href={`/shop/${slug}/item/${p.id}`}
+                className="w-28 shrink-0"
+              >
+                <div className="aspect-square overflow-hidden rounded-xl border border-line bg-elevated">
+                  {firstImage(p.imageUrls) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={firstImage(p.imageUrls)}
+                      alt={p.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : null}
+                </div>
+                <div className="mt-1 line-clamp-2 text-xs text-muted">{p.name}</div>
+                <div className="text-xs font-semibold tabular-nums text-ink">
+                  {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* フローティング カートボタン */}
       {cartCount > 0 && !cartOpen && !checkoutOpen && (
         <button
           onClick={() => setCartOpen(true)}
-          className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-fg shadow-panel"
+          className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-fg shadow-panel transition-transform hover:scale-105"
         >
-          カートを見る（{cartCount}点 / {formatYen(subtotalIncl)}）
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fg px-1.5 text-xs text-accent">
+            {cartCount}
+          </span>
+          カートを見る・{formatYen(subtotalIncl)}
         </button>
       )}
 
-      {/* カート */}
-      <Modal
-        open={cartOpen}
-        onClose={() => setCartOpen(false)}
-        title={`カート（${cartCount}点）`}
-      >
-        {cartLines.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">
-            カートは空です。
-          </p>
-        ) : (
-          <div className="space-y-4">
-            <ul className="divide-y divide-line/70">
-              {cartLines.map((l) => (
-                <li key={l.productId} className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-ink">
-                      {l.product.name}
-                    </div>
-                    <div className="text-xs text-muted tabular-nums">
-                      {formatYen(
-                        taxInclusiveUnit(l.product.price, l.product.taxRate),
-                      )}
-                      （税込）
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setQty(l.productId, l.qty - 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-muted hover:bg-elevated"
-                    >
-                      −
-                    </button>
-                    <span className="w-7 text-center text-sm tabular-nums">
-                      {l.qty}
-                    </span>
-                    <button
-                      onClick={() => setQty(l.productId, l.qty + 1)}
-                      disabled={l.qty >= l.product.stock}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-muted hover:bg-elevated disabled:opacity-40"
-                    >
-                      ＋
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {freeShipRemaining > 0 && (
-              <p className="rounded-lg bg-accent-soft px-3 py-2 text-center text-xs text-accent-fg">
-                あと <span className="font-semibold">{formatYen(freeShipRemaining)}</span> で配送料無料
-              </p>
-            )}
-            <div className="flex items-center justify-between border-t border-line pt-3 text-sm">
-              <span className="text-muted">小計（税込）</span>
-              <span className="text-lg font-semibold tabular-nums text-ink">
-                {formatYen(subtotalIncl)}
-              </span>
-            </div>
-            {shop.pointRatePercent > 0 && (
-              <p className="text-xs text-accent">
-                ご購入で約{" "}
-                {Math.floor((subtotalExcl * shop.pointRatePercent) / 100)}{" "}
-                ポイント付与
-              </p>
-            )}
-            <Button
-              className="w-full"
-              onClick={() => {
-                setCartOpen(false);
-                setCheckoutOpen(true);
-              }}
-            >
-              購入手続きへ進む
-            </Button>
-          </div>
-        )}
-      </Modal>
-
-      {/* チェックアウトフォーム */}
+      {/* トースト */}
       {toast && (
         <div className="fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
-          <div className="animate-fade-in rounded-full bg-ink/90 px-4 py-2 text-sm text-surface shadow-panel">
+          <div className="animate-slide-up rounded-full bg-ink/90 px-4 py-2 text-sm text-surface shadow-panel">
             {toast}
           </div>
         </div>
       )}
 
+      {/* スライドインカート */}
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        lines={cartLines}
+        subtotalIncl={subtotalIncl}
+        subtotalExcl={subtotalExcl}
+        freeShipRemaining={freeShipRemaining}
+        pointRatePercent={shop.pointRatePercent}
+        onSetQty={setQty}
+        onCheckout={() => {
+          setCartOpen(false);
+          setCheckoutOpen(true);
+        }}
+      />
+
+      {/* チェックアウト */}
       <CheckoutForm
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
-        slug={shop.storeSlug!}
+        slug={slug}
         shippingFee={shop.shippingFee}
         freeShippingThreshold={shop.freeShippingThreshold}
         subtotalIncl={subtotalIncl}
@@ -319,7 +307,7 @@ export function StorefrontClient({
           startTransition(async () => {
             const res = await createCheckout(payload);
             if (res.ok) {
-              clearCart(shop.storeSlug!);
+              clearCart(slug);
               window.location.href = res.url;
             } else {
               setError(res.error);
@@ -344,15 +332,26 @@ function CatChip({
     <button
       onClick={onClick}
       className={
-        "shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors " +
+        "shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all " +
         (active
-          ? "border-accent bg-accent text-accent-fg"
-          : "border-line bg-surface text-muted hover:text-ink")
+          ? "border-accent bg-accent text-accent-fg shadow"
+          : "border-line bg-surface text-muted hover:border-accent/40 hover:text-ink")
       }
     >
       {label}
     </button>
   );
+}
+
+function firstImage(raw: string | null): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  } catch {
+    /* ignore */
+  }
+  return undefined;
 }
 
 function CheckoutForm({
@@ -491,7 +490,7 @@ function CheckoutForm({
           </Select>
         </div>
         {form.fulfillment === "shipping" && (
-          <div>
+          <div className="animate-slide-up">
             <Label>配送先住所</Label>
             <Textarea
               value={form.shippingAddress}
@@ -517,13 +516,13 @@ function CheckoutForm({
             <span>小計（税込）</span>
             <span className="tabular-nums">{formatYen(subtotalIncl)}</span>
           </div>
-          {ship > 0 && (
-            <div className="flex justify-between text-muted">
-              <span>送料</span>
-              <span className="tabular-nums">{formatYen(ship)}</span>
-            </div>
-          )}
-          <div className="flex justify-between font-semibold text-ink">
+          <div className="flex justify-between text-muted">
+            <span>送料</span>
+            <span className="tabular-nums">
+              {ship > 0 ? formatYen(ship) : "無料"}
+            </span>
+          </div>
+          <div className="flex justify-between border-t border-line pt-1 font-semibold text-ink">
             <span>お支払い合計</span>
             <span className="tabular-nums">{formatYen(total)}</span>
           </div>

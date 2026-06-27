@@ -314,6 +314,55 @@ export async function saveStorefrontSettings(
   return { ok: true };
 }
 
+export async function fetchProductReviews(productId: number) {
+  if (!(await getCurrentUser())) return [];
+  const shopId = await getActiveShopId();
+  const { getProductReviews } = await import(
+    "@/feature/product/services/getProducts"
+  );
+  return getProductReviews(shopId, productId);
+}
+
+export async function setReviewPublished(
+  id: number,
+  isPublished: boolean,
+): Promise<ActionResult> {
+  if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
+  const shopId = await getActiveShopId();
+  const existing = await db.productReview.findFirst({
+    where: { id, shopId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, error: "レビューが見つかりません" };
+  try {
+    await db.productReview.update({ where: { id }, data: { isPublished } });
+  } catch {
+    return { ok: false, error: "更新に失敗しました" };
+  }
+  revalidatePath("/products");
+  return { ok: true };
+}
+
+export async function deleteReview(id: number): Promise<ActionResult> {
+  if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
+  const shopId = await getActiveShopId();
+  const existing = await db.productReview.findFirst({
+    where: { id, shopId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, error: "レビューが見つかりません" };
+  try {
+    await db.productReview.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  } catch {
+    return { ok: false, error: "削除に失敗しました" };
+  }
+  revalidatePath("/products");
+  return { ok: true };
+}
+
 export async function saveLegalInfo(
   _prev: ActionResult | null,
   formData: FormData,

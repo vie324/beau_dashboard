@@ -25,14 +25,59 @@ export async function getProducts(shopId: number) {
     },
   });
 
+  // レビュー集計（公開・未削除のみ）
+  const reviewMap = new Map<number, { avg: number; count: number }>();
+  if (products.length > 0) {
+    const grouped = await db.productReview.groupBy({
+      by: ["productId"],
+      where: {
+        shopId,
+        productId: { in: products.map((p) => p.id) },
+        isPublished: true,
+        deletedAt: null,
+      },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+    for (const g of grouped) {
+      reviewMap.set(g.productId, {
+        avg: g._avg.rating ?? 0,
+        count: g._count._all,
+      });
+    }
+  }
+
   return products.map((p) => ({
     ...p,
     quantity: p.inventory?.quantity ?? 0,
     safetyStock: p.inventory?.safetyStock ?? 0,
     lowStock:
       (p.inventory?.quantity ?? 0) <= (p.inventory?.safetyStock ?? 0),
+    ratingAvg: reviewMap.get(p.id)?.avg ?? 0,
+    ratingCount: reviewMap.get(p.id)?.count ?? 0,
   }));
 }
+
+/** 1商品の全レビュー（管理モデレーション用。非公開も含む）。 */
+export async function getProductReviews(shopId: number, productId: number) {
+  return db.productReview.findMany({
+    where: { shopId, productId, deletedAt: null },
+    orderBy: { id: "desc" },
+    select: {
+      id: true,
+      authorName: true,
+      rating: true,
+      title: true,
+      comment: true,
+      isPublished: true,
+      createdAt: true,
+    },
+  });
+}
+
+export type AdminReviewRow = Awaited<
+  ReturnType<typeof getProductReviews>
+>[number];
 
 export type ProductRow = Awaited<ReturnType<typeof getProducts>>[number];
 

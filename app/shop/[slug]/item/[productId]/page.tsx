@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { getStorefrontProduct } from "@/feature/storefront/services/getStorefront";
-import { AddToCartButton } from "@/feature/storefront/components/AddToCartButton";
+import { ProductDetailClient } from "@/feature/storefront/components/ProductDetailClient";
+import { ReviewSection } from "@/feature/storefront/components/ReviewSection";
 import { StoreUnavailable } from "@/feature/storefront/components/StoreUnavailable";
-import { Badge } from "@/components/ui/Badge";
+import { StarRating } from "@/feature/storefront/components/StarRating";
 import { formatYen, taxInclusiveUnit, parseImageUrls } from "@/helper/utils/retail";
 
 export const dynamic = "force-dynamic";
@@ -46,81 +47,68 @@ export default async function StorefrontItemPage({
   const data = await getStorefrontProduct(slug, id);
   if (!data) return <StoreUnavailable />;
 
-  const { shop, product } = data;
-  const images = parseImageUrls(product.imageUrls);
+  const { shop, product, reviews, related } = data;
 
   return (
-    <main className="min-h-screen px-4 py-8">
+    <main className="min-h-screen bg-base px-4 py-8">
       <div className="mx-auto max-w-2xl">
         <a
           href={`/shop/${slug}`}
-          className="mb-4 inline-block text-sm text-muted hover:text-accent"
+          className="mb-4 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-accent"
         >
           ← {shop.storeTitle || shop.name} に戻る
         </a>
 
-        <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
-          <div className="aspect-square bg-elevated">
-            {images[0] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={images[0]}
-                alt={product.name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-faint">
-                No Image
-              </div>
-            )}
-          </div>
-          {images.length > 1 && (
-            <div className="no-scrollbar flex gap-2 overflow-x-auto p-3">
-              {images.slice(1).map((src, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={i}
-                  src={src}
-                  alt={`${product.name} ${i + 2}`}
-                  className="h-20 w-20 shrink-0 rounded-lg object-cover"
-                />
-              ))}
+        <ProductDetailClient slug={slug} product={product} />
+
+        <ReviewSection
+          slug={slug}
+          productId={product.id}
+          reviews={reviews}
+          ratingAvg={product.ratingAvg}
+          ratingCount={product.ratingCount}
+        />
+
+        {related.length > 0 && (
+          <section className="mt-8">
+            <h2 className="mb-3 text-base font-semibold text-ink">
+              こちらもおすすめ
+            </h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {related.map((p) => {
+                const img = parseImageUrls(p.imageUrls)[0];
+                return (
+                  <a
+                    key={p.id}
+                    href={`/shop/${slug}/item/${p.id}`}
+                    className="group overflow-hidden rounded-xl border border-line bg-surface shadow-panel transition-all hover:-translate-y-0.5 hover:border-accent/40"
+                  >
+                    <div className="aspect-square overflow-hidden bg-elevated">
+                      {img ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={img}
+                          alt={p.name}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="p-2">
+                      <div className="line-clamp-2 text-xs text-ink">{p.name}</div>
+                      {p.ratingCount > 0 && (
+                        <StarRating value={p.ratingAvg} size={11} className="mt-0.5" />
+                      )}
+                      <div className="mt-0.5 text-xs font-semibold tabular-nums text-ink">
+                        {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
+                      </div>
+                    </div>
+                  </a>
+                );
+              })}
             </div>
-          )}
-
-          <div className="space-y-4 p-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold text-ink">
-                  {product.name}
-                </h1>
-                {product.stock <= 0 && (
-                  <Badge className="border-line bg-elevated text-muted">
-                    在庫切れ
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
-                {formatYen(taxInclusiveUnit(product.price, product.taxRate))}
-                <span className="ml-1 text-xs font-normal text-faint">
-                  （税込）
-                </span>
-              </p>
-            </div>
-
-            {product.description && (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">
-                {product.description}
-              </p>
-            )}
-
-            <AddToCartButton
-              slug={slug}
-              productId={product.id}
-              stock={product.stock}
-            />
-          </div>
-        </div>
+          </section>
+        )}
       </div>
     </main>
   );

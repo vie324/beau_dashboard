@@ -10,6 +10,8 @@ import { StockAdjustModal } from "@/feature/product/components/StockAdjustModal"
 import { CategoryManagerModal } from "@/feature/product/components/CategoryManagerModal";
 import { StorefrontSettingsModal } from "@/feature/product/components/StorefrontSettingsModal";
 import { LegalInfoModal } from "@/feature/product/components/LegalInfoModal";
+import { ReviewsModal } from "@/feature/product/components/ReviewsModal";
+import { StarRating } from "@/feature/storefront/components/StarRating";
 import { deleteProduct } from "@/feature/product/actions/productActions";
 import type {
   ProductRow,
@@ -50,6 +52,7 @@ export function ProductsClient({
   const [editing, setEditing] = useState<ProductRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [stockFor, setStockFor] = useState<ProductRow | null>(null);
+  const [reviewsFor, setReviewsFor] = useState<ProductRow | null>(null);
   const [showCats, setShowCats] = useState(false);
   const [showStore, setShowStore] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
@@ -222,6 +225,14 @@ export function ProductsClient({
                         <span className="tabular-nums">
                           原価 {formatYen(p.cost)}
                         </span>
+                        {p.ratingCount > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <StarRating value={p.ratingAvg} size={12} />
+                            <span className="text-faint">
+                              {p.ratingAvg.toFixed(1)}（{p.ratingCount}）
+                            </span>
+                          </span>
+                        )}
                       </div>
                     </button>
                     <div className="flex shrink-0 items-center gap-3 self-end sm:self-auto">
@@ -243,6 +254,14 @@ export function ProductsClient({
                         disabled={pending}
                       >
                         在庫調整
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setReviewsFor(p)}
+                        disabled={pending}
+                      >
+                        レビュー{p.ratingCount > 0 ? `(${p.ratingCount})` : ""}
                       </Button>
                       <Button
                         size="sm"
@@ -340,6 +359,14 @@ export function ProductsClient({
           open
           legalInfo={shop.legalInfo}
           onClose={() => setShowLegal(false)}
+        />
+      )}
+      {reviewsFor && (
+        <ReviewsModal
+          open
+          productId={reviewsFor.id}
+          productName={reviewsFor.name}
+          onClose={() => setReviewsFor(null)}
         />
       )}
     </>

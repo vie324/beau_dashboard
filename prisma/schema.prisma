@@ -93,6 +93,7 @@ model Shop {
   stockMovements    StockMovement[]
   orders            Order[]
   pointTransactions PointTransaction[]
+  productReviews    ProductReview[]
 }
 
 // 設備（楽トレ・水素吸引機 等）。スタッフの代わりにメニューの「リソース」として
@@ -336,9 +337,28 @@ model Product {
   inventory   InventoryItem?
   movements   StockMovement[]
   orderItems  OrderItem[]
+  reviews     ProductReview[]
 
   @@unique([shopId, sku])
   @@index([shopId])
+}
+
+// 商品レビュー（星評価）。公開ページから投稿でき、管理者が非表示/削除できる。
+model ProductReview {
+  id          Int       @id @default(autoincrement())
+  shopId      Int
+  productId   Int
+  authorName  String
+  rating      Int       // 1..5
+  title       String?
+  comment     String?
+  isPublished Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  shop        Shop      @relation(fields: [shopId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@index([shopId, productId])
 }
 
 // 在庫（商品1件につき1行）。StockMovement の合計をキャッシュした現在数。
