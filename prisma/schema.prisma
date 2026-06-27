@@ -65,6 +65,15 @@ model Shop {
   // e.g. {"2026-05-25":{"type":"closed","note":"祝日"},"2026-05-26":{"type":"morning"},"2026-05-27":{"type":"afternoon"}}
   // Priority: dateOverrides > hoursByDow > shop defaults.
   dateOverrides     String?
+  // ---- 物販ストアフロント（公開販売ページ /shop/<storeSlug>） ----
+  storeSlug         String?   @unique
+  storeActive       Boolean   @default(false)
+  storeTitle        String?
+  storeDescription  String?
+  // 配送送料（円）。0 で送料無料。
+  shippingFee       Int       @default(0)
+  // ポイント: 購入小計（税抜）に対する付与率(%)。0 で無効。1pt = 1円 として精算で利用。
+  pointRatePercent  Int       @default(0)
   createdAt         DateTime  @default(now())
   deletedAt         DateTime?
   brand             Brand     @relation(fields: [brandId], references: [id])
@@ -74,6 +83,12 @@ model Shop {
   visitSources      VisitSource[]
   equipments        Equipment[]
   cardColorPresets  CardColorPreset[]
+  productCategories ProductCategory[]
+  products          Product[]
+  inventoryItems    InventoryItem[]
+  stockMovements    StockMovement[]
+  orders            Order[]
+  pointTransactions PointTransaction[]
 }
 
 // 設備（楽トレ・水素吸引機 等）。スタッフの代わりにメニューの「リソース」として
@@ -126,10 +141,14 @@ model Customer {
   // 生年月日（日付のみ。UTC 0:00 として保存）
   birthday     DateTime?
   note         String?
+  // 物販ポイント残高（PointTransaction の合計をキャッシュ）。1pt = 1円。
+  pointsBalance Int          @default(0)
   createdAt    DateTime      @default(now())
   deletedAt    DateTime?
   shop         Shop          @relation(fields: [shopId], references: [id])
   appointments Appointment[]
+  orders            Order[]
+  pointTransactions PointTransaction[]
 
   @@unique([shopId, code])
 }
@@ -271,4 +290,152 @@ model BookingLink {
   deletedAt             DateTime?
   brand                 Brand         @relation(fields: [brandId], references: [id])
   appointments          Appointment[]
+}
+
+// ---- 物販（Retail / EC）— すべて店舗スコープ（shopId 必須）----
+
+model ProductCategory {
+  id         Int       @id @default(autoincrement())
+  shopId     Int
+  name       String
+  sortNumber Int       @default(0)
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  shop       Shop      @relation(fields: [shopId], references: [id])
+  products   Product[]
+
+  @@index([shopId])
+}
+
+model Product {
+  id          Int       @id @default(autoincrement())
+  shopId      Int
+  categoryId  Int?
+  // 店舗内で一意の商品コード（任意）。再取込・棚卸の突合キー。
+  sku         String?
+  name        String
+  description String?
+  // 税抜価格（円）。表示・精算は税込で計算。
+  price       Int       @default(0)
+  // 原価（円）。粗利計算用。公開ページには出さない。
+  cost        Int       @default(0)
+  // 税率(%)。軽減税率対象は 8、標準は 10。
+  taxRate     Int       @default(10)
+  // JSON(TEXT): 画像URLの配列 ["https://..."]
+  imageUrls   String?
+  isPublic    Boolean   @default(true)
+  sortNumber  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  shop        Shop             @relation(fields: [shopId], references: [id])
+  category    ProductCategory? @relation(fields: [categoryId], references: [id])
+  inventory   InventoryItem?
+  movements   StockMovement[]
+  orderItems  OrderItem[]
+
+  @@unique([shopId, sku])
+  @@index([shopId])
+}
+
+// 在庫（商品1件につき1行）。StockMovement の合計をキャッシュした現在数。
+model InventoryItem {
+  id          Int      @id @default(autoincrement())
+  shopId      Int
+  productId   Int      @unique
+  quantity    Int      @default(0)
+  // 発注点。quantity <= safetyStock で在庫アラート。
+  safetyStock Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  shop        Shop     @relation(fields: [shopId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@index([shopId])
+}
+
+// 入出庫台帳（source of truth）。in 入荷 / out 販売 / waste 廃棄 / adjust 棚卸調整。
+model StockMovement {
+  id        Int      @id @default(autoincrement())
+  shopId    Int
+  productId Int
+  type      String
+  // 符号付き数量（+入荷・調整増 / -販売・廃棄・調整減）
+  qty       Int
+  reason    String?
+  orderId   Int?
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@index([shopId, productId])
+}
+
+model Order {
+  id              Int       @id @default(autoincrement())
+  shopId          Int
+  orderNo         String    @unique
+  customerId      Int?
+  // 購入者情報（顧客未紐付け時の連絡用 / 紐付けの突合に使用）
+  buyerName       String
+  buyerPhone      String?
+  buyerEmail      String?
+  // 会員番号（Customer.code との突合キー）
+  buyerCode       String?
+  // pickup 店頭受取 / shipping 配送
+  fulfillment     String    @default("pickup")
+  shippingAddress String?
+  // pending 未決済 / paid 決済済 / cancelled / refunded
+  paymentStatus   String    @default("pending")
+  // received 受付 / preparing 準備中 / ready 受渡準備 / completed 完了 / cancelled
+  status          String    @default("received")
+  subtotal        Int       @default(0) // 税抜小計
+  taxTotal        Int       @default(0)
+  shippingFee     Int       @default(0)
+  pointsUsed      Int       @default(0)
+  pointsEarned    Int       @default(0)
+  total           Int       @default(0) // 請求総額（税込 - ポイント利用 + 送料）
+  note            String?
+  stripeSessionId String?   @unique
+  stripePaymentId String?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  shop              Shop               @relation(fields: [shopId], references: [id])
+  customer          Customer?          @relation(fields: [customerId], references: [id])
+  items             OrderItem[]
+  pointTransactions PointTransaction[]
+
+  @@index([shopId, createdAt])
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  productId Int?
+  // 注文時点のスナップショット（商品が後で改名・削除されても明細は不変）
+  name      String
+  unitPrice Int      @default(0) // 税抜
+  taxRate   Int      @default(10)
+  qty       Int      @default(1)
+  order     Order    @relation(fields: [orderId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+// ポイント台帳。earn 付与 / redeem 利用 / adjust 手動調整。
+model PointTransaction {
+  id         Int      @id @default(autoincrement())
+  shopId     Int
+  customerId Int
+  orderId    Int?
+  type       String
+  points     Int      // 符号付き（+付与 / -利用）
+  reason     String?
+  createdAt  DateTime @default(now())
+  shop       Shop      @relation(fields: [shopId], references: [id])
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  order      Order?    @relation(fields: [orderId], references: [id])
+
+  @@index([shopId, customerId])
 }

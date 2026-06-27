@@ -20,6 +20,7 @@ export async function getCustomers(shopId: number) {
       gender: true,
       birthday: true,
       note: true,
+      pointsBalance: true,
       createdAt: true,
     },
   });
@@ -28,7 +29,7 @@ export async function getCustomers(shopId: number) {
 
   const ids = customers.map((c) => c.id);
 
-  const [visits, lastVisits] = await Promise.all([
+  const [visits, purchases, lastVisits] = await Promise.all([
     db.appointment.groupBy({
       by: ["customerId"],
       where: {
@@ -38,6 +39,17 @@ export async function getCustomers(shopId: number) {
         status: 2, // 完了のみカウント
       },
       _count: { _all: true },
+    }),
+    db.order.groupBy({
+      by: ["customerId"],
+      where: {
+        shopId,
+        customerId: { in: ids },
+        deletedAt: null,
+        paymentStatus: "paid",
+      },
+      _count: { _all: true },
+      _sum: { total: true },
     }),
     db.appointment.groupBy({
       by: ["customerId"],
@@ -59,11 +71,21 @@ export async function getCustomers(shopId: number) {
   for (const l of lastVisits) {
     if (l.customerId != null) lastMap.set(l.customerId, l._max.startAt);
   }
+  const purchaseMap = new Map<number, { count: number; total: number }>();
+  for (const p of purchases) {
+    if (p.customerId != null)
+      purchaseMap.set(p.customerId, {
+        count: p._count._all,
+        total: p._sum.total ?? 0,
+      });
+  }
 
   return customers.map((c) => ({
     ...c,
     visitCount: visitMap.get(c.id) ?? 0,
     lastVisitAt: lastMap.get(c.id) ?? null,
+    purchaseCount: purchaseMap.get(c.id)?.count ?? 0,
+    purchaseTotal: purchaseMap.get(c.id)?.total ?? 0,
   }));
 }
 

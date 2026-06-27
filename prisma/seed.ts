@@ -34,6 +34,13 @@ async function main() {
   console.log("Seeding Beau …");
 
   // Clean — order matters for FKs (no-op on a fresh DB)
+  await db.pointTransaction.deleteMany();
+  await db.orderItem.deleteMany();
+  await db.order.deleteMany();
+  await db.stockMovement.deleteMany();
+  await db.inventoryItem.deleteMany();
+  await db.product.deleteMany();
+  await db.productCategory.deleteMany();
   await db.appointment.deleteMany();
   await db.bookingLink.deleteMany();
   await db.menu.deleteMany();
@@ -58,6 +65,14 @@ async function main() {
       phone: "03-1234-5678",
       lineUrl: "https://line.me/R/ti/p/@beau-ginza",
       defaultBookingSlug: "beau",
+      // 物販ストアフロント（公開販売ページ /shop/beau-ginza）
+      storeActive: true,
+      storeSlug: "beau-ginza",
+      storeTitle: "Beau 銀座本店 物販ストア",
+      storeDescription:
+        "店頭でも人気のセルフケアグッズをオンラインでも。会員番号のご入力でポイントが貯まります。",
+      shippingFee: 600,
+      pointRatePercent: 5,
     },
   });
 
@@ -265,8 +280,126 @@ async function main() {
     },
   });
 
+  // ---- 物販: カテゴリ・商品・在庫（銀座本店）----
+  const pcSupport = await db.productCategory.create({
+    data: { shopId: ginza.id, name: "サポーター・矯正", sortNumber: 1 },
+  });
+  const pcCare = await db.productCategory.create({
+    data: { shopId: ginza.id, name: "セルフケア用品", sortNumber: 2 },
+  });
+  const pcSupple = await db.productCategory.create({
+    data: { shopId: ginza.id, name: "サプリメント", sortNumber: 3 },
+  });
+
+  const productSeed: {
+    name: string;
+    sku: string;
+    categoryId: number;
+    price: number;
+    cost: number;
+    taxRate: number;
+    description: string;
+    stock: number;
+    safety: number;
+  }[] = [
+    {
+      name: "腰用サポーター（M）",
+      sku: "SP-WAIST-M",
+      categoryId: pcSupport.id,
+      price: 3200,
+      cost: 1400,
+      taxRate: 10,
+      description: "通気性の高いメッシュ素材。腰部をしっかり固定し、日常動作をサポートします。",
+      stock: 24,
+      safety: 5,
+    },
+    {
+      name: "膝用サポーター（フリー）",
+      sku: "SP-KNEE-F",
+      categoryId: pcSupport.id,
+      price: 2800,
+      cost: 1200,
+      taxRate: 10,
+      description: "薄手で目立ちにくく、立ち仕事やスポーツ時の膝の負担を軽減します。",
+      stock: 18,
+      safety: 5,
+    },
+    {
+      name: "オリジナル健康枕",
+      sku: "CR-PILLOW",
+      categoryId: pcCare.id,
+      price: 6800,
+      cost: 3000,
+      taxRate: 10,
+      description: "首・肩の負担を考えて設計した整体院監修の枕。高さ調整シート付き。",
+      stock: 8,
+      safety: 3,
+    },
+    {
+      name: "フォームローラー",
+      sku: "CR-ROLLER",
+      categoryId: pcCare.id,
+      price: 2400,
+      cost: 900,
+      taxRate: 10,
+      description: "セルフ筋膜リリースに。お風呂上がりのケアにおすすめです。",
+      stock: 3,
+      safety: 5,
+    },
+    {
+      name: "温熱サポートインソール",
+      sku: "CR-INSOLE",
+      categoryId: pcCare.id,
+      price: 1800,
+      cost: 700,
+      taxRate: 10,
+      description: "足裏アーチを支え、冷えやむくみが気になる方に。",
+      stock: 30,
+      safety: 8,
+    },
+    {
+      name: "グルコサミン＆コンドロイチン（90粒）",
+      sku: "SUP-GLUCO",
+      categoryId: pcSupple.id,
+      price: 3600,
+      cost: 1500,
+      taxRate: 8,
+      description: "毎日の歩行をサポートする栄養補助食品。約30日分。",
+      stock: 40,
+      safety: 10,
+    },
+  ];
+
+  for (const p of productSeed) {
+    await db.product.create({
+      data: {
+        shopId: ginza.id,
+        categoryId: p.categoryId,
+        sku: p.sku,
+        name: p.name,
+        price: p.price,
+        cost: p.cost,
+        taxRate: p.taxRate,
+        description: p.description,
+        isPublic: true,
+        inventory: {
+          create: { shopId: ginza.id, quantity: p.stock, safetyStock: p.safety },
+        },
+        movements: {
+          create: {
+            shopId: ginza.id,
+            type: "in",
+            qty: p.stock,
+            reason: "初期在庫",
+          },
+        },
+      },
+    });
+  }
+
   console.log("Seed complete.");
   console.log("Login: admin@beau.test / beau1234");
+  console.log("Storefront: /shop/beau-ginza");
 }
 
 main()
