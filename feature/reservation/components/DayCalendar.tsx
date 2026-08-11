@@ -672,7 +672,13 @@ export function DayCalendar({
                             )}
                             <span className="truncate">{name}</span>
                           </div>
-                          {r.menu && height > 48 && (
+                          {/* メモ優先。メニュー名はさらに余裕があるときだけ。 */}
+                          {r.note && height > 44 && (
+                            <div className="line-clamp-2 whitespace-pre-wrap break-words text-ink/80">
+                              {r.note}
+                            </div>
+                          )}
+                          {r.menu && height > (r.note ? 84 : 48) && (
                             <div className="truncate text-faint">{r.menu.name}</div>
                           )}
                         </>

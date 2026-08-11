@@ -58,6 +58,9 @@ export async function getSettingsData(brandId: number, shopId: number) {
         shopId: true,
         requiresStaff: true,
         equipmentId: true,
+        // 対応スタッフ（空 = 全スタッフ対応）。全店舗共通メニューは他店舗の
+        // スタッフも含むので、画面側で表示中の店舗のスタッフに絞り込む。
+        staffLinks: { select: { staffId: true } },
       },
     }),
     db.visitSource.findMany({

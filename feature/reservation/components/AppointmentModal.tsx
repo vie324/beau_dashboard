@@ -9,6 +9,7 @@ import { STATUS_OPTIONS } from "@/helper/utils/status";
 import { timeSlots } from "@/helper/utils/timeOptions";
 import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
 import { filterCustomersByQuery } from "@/helper/utils/customerSort";
+import { activeMenuStaffIds } from "@/helper/utils/menuStaff";
 
 const TIME_SLOTS_15 = timeSlots(15);
 
@@ -46,6 +47,7 @@ type FormData = {
     menuManageId: string;
     requiresStaff: boolean;
     equipmentId: number | null;
+    staffLinks?: { staffId: number }[];
   }[];
   customers: {
     id: number;
@@ -173,6 +175,23 @@ export function AppointmentModal({
     key: K,
     value: (typeof form)[K],
   ) => setForm((f) => ({ ...f, [key]: value }));
+
+  // メニューの「対応スタッフ」（設定画面）。空 = 全員対応。
+  // 店内での予約はブロックせず、対象外の担当を選んだときに注意書きを出すだけ。
+  const menuStaffIds = useMemo(() => {
+    const m =
+      form.menuId === ""
+        ? null
+        : formData.menus.find((x) => x.id === Number(form.menuId));
+    return activeMenuStaffIds(
+      formData.staffs.map((s) => s.id),
+      m?.staffLinks?.map((l) => l.staffId) ?? [],
+    );
+  }, [form.menuId, formData.menus, formData.staffs]);
+  const staffOffMenu =
+    menuStaffIds.length > 0 &&
+    form.staffId !== "" &&
+    !menuStaffIds.includes(Number(form.staffId));
 
   /** 楽観的更新用の ReservationRow を現在のフォーム値から組み立てる。 */
   function buildOptimisticRow(idOverride?: number): ReservationRow {
@@ -512,9 +531,22 @@ export function AppointmentModal({
             {formData.staffs.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
+                {menuStaffIds.length > 0 && !menuStaffIds.includes(s.id)
+                  ? "（このメニュー対象外）"
+                  : ""}
               </option>
             ))}
           </Select>
+          {staffOffMenu && (
+            <p className="mt-1 text-xs text-warn">
+              このメニューの対応スタッフに設定されていません（
+              {formData.staffs
+                .filter((s) => menuStaffIds.includes(s.id))
+                .map((s) => s.name)
+                .join("・")}
+              ）。このまま保存もできます。
+            </p>
+          )}
         </div>
 
         <div>

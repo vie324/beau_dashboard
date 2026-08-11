@@ -348,10 +348,13 @@ export function SettingsClient({
       {tab === "menus" && (
         <Section
           title="メニュー一覧"
+          hint={`「対応スタッフ」を設定すると、そのメニューはオンライン予約で対象スタッフにしか割り当てられません（${activeShopName}のスタッフで設定します）。`}
           onAdd={() =>
             setModal(
               <MenuForm
                 equipments={equipments}
+                staffs={staffs}
+                activeShopName={activeShopName}
                 onClose={() => setModal(null)}
                 onSubmit={(fd) => submitForm(saveMenu, fd)}
                 pending={pending}
@@ -366,6 +369,10 @@ export function SettingsClient({
                 ? (equipments.find((e) => e.id === m.equipmentId)?.name ??
                   null)
                 : null;
+            // 対応スタッフは店舗ごと。表示中の店舗に在籍する人だけを出す。
+            const menuStaffNames = m.staffLinks
+              .map((l) => staffs.find((s) => s.id === l.staffId)?.name)
+              .filter((n): n is string => Boolean(n));
             return (
             <Row
               key={m.id}
@@ -387,6 +394,16 @@ export function SettingsClient({
                       スタッフ不要
                     </Badge>
                   )}
+                  {m.requiresStaff &&
+                    (menuStaffNames.length > 0 ? (
+                      <Badge className="border-accent/40 bg-accent/10 text-accent-hover">
+                        対応: {menuStaffNames.join("・")}
+                      </Badge>
+                    ) : (
+                      <Badge className="border-line bg-base text-faint">
+                        対応: 全員
+                      </Badge>
+                    ))}
                   {eqName && (
                     <Badge className="border-accent/30 bg-accent/10 text-accent-hover">
                       設備: {eqName}
@@ -404,6 +421,8 @@ export function SettingsClient({
                   <MenuForm
                     initial={m}
                     equipments={equipments}
+                    staffs={staffs}
+                    activeShopName={activeShopName}
                     onClose={() => setModal(null)}
                     onSubmit={(fd) => submitForm(saveMenu, fd)}
                     pending={pending}
@@ -1290,12 +1309,16 @@ function WorkDatesCalendar({
 function MenuForm({
   initial,
   equipments,
+  staffs,
+  activeShopName,
   onClose,
   onSubmit,
   pending,
 }: {
   initial?: MenuRow;
   equipments: EquipmentRow[];
+  staffs: StaffRow[];
+  activeShopName: string;
   onClose: () => void;
   onSubmit: (fd: FormData) => void;
   pending: boolean;
@@ -1309,6 +1332,10 @@ function MenuForm({
     brandCommon: initial ? initial.shopId == null : true,
     requiresStaff: initial?.requiresStaff ?? true,
     equipmentId: initial?.equipmentId ?? null,
+    // 対応スタッフ（空 = 全員対応）。表示中の店舗のスタッフだけを扱う。
+    staffIds: (initial?.staffLinks ?? [])
+      .map((l) => l.staffId)
+      .filter((id) => staffs.some((s) => s.id === id)),
   });
   const submit = () => {
     const fd = new FormData();
@@ -1321,8 +1348,20 @@ function MenuForm({
     fd.set("brandCommon", f.brandCommon ? "true" : "false");
     fd.set("requiresStaff", f.requiresStaff ? "true" : "false");
     if (f.equipmentId != null) fd.set("equipmentId", String(f.equipmentId));
+    // スタッフ不要メニューに対応スタッフは無意味なので送らない。
+    fd.set(
+      "staffIds",
+      JSON.stringify(f.requiresStaff ? f.staffIds : []),
+    );
     onSubmit(fd);
   };
+  const toggleStaff = (id: number, on: boolean) =>
+    setF((p) => ({
+      ...p,
+      staffIds: on
+        ? [...p.staffIds, id]
+        : p.staffIds.filter((x) => x !== id),
+    }));
   return (
     <Modal
       open
@@ -1431,6 +1470,54 @@ function MenuForm({
             </p>
           </div>
         </div>
+
+        {f.requiresStaff && (
+          <div className="rounded-xl border border-line bg-base/40 p-3">
+            <p className="mb-1 text-xs font-medium text-muted">
+              対応スタッフ（{activeShopName}）
+            </p>
+            <p className="mb-2 text-[11px] text-faint">
+              誰も選ばなければ全員が対応できます。選ぶと、オンライン予約では
+              その人の空き時間だけが「◎」になり、指名なしでもその人にしか
+              割り当てられません。全店舗共通メニューでも、対応スタッフは
+              店舗ごとに設定します。
+            </p>
+            {staffs.length === 0 ? (
+              <p className="text-xs text-faint">
+                この店舗にはスタッフが登録されていません
+              </p>
+            ) : (
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {staffs.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 text-sm text-ink"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={f.staffIds.includes(s.id)}
+                      onChange={(e) => toggleStaff(s.id, e.target.checked)}
+                      className="h-4 w-4 shrink-0 accent-accent"
+                    />
+                    <span
+                      className="inline-block h-3 w-3 shrink-0 rounded-full ring-1 ring-line"
+                      style={{ background: s.color }}
+                    />
+                    <span className="truncate">{s.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[11px] font-medium text-muted">
+              {f.staffIds.length === 0
+                ? "現在: 全員が対応できます"
+                : `現在: ${staffs
+                    .filter((s) => f.staffIds.includes(s.id))
+                    .map((s) => s.name)
+                    .join("・")} のみ対応`}
+            </p>
+          </div>
+        )}
 
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
