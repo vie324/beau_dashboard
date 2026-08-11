@@ -15,6 +15,9 @@ export type PublicBookingData = {
     name: string;
     durationMin: number;
     price: number;
+    // 対応スタッフのID（空 = 全スタッフ対応）。店舗ごとの絞り込みは
+    // helper/utils/menuStaff の capableStaffIds で行う。
+    staffIds: number[];
   }[];
   staffsByShop: Record<number, { id: number; name: string }[]>;
 };
@@ -58,7 +61,13 @@ export async function getBookingLinkBySlug(
       ...(allowed.length ? { id: { in: allowed } } : {}),
     },
     orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
-    select: { id: true, name: true, durationMin: true, price: true },
+    select: {
+      id: true,
+      name: true,
+      durationMin: true,
+      price: true,
+      staffLinks: { select: { staffId: true } },
+    },
   });
 
   const staffsByShop: Record<number, { id: number; name: string }[]> = {};
@@ -87,7 +96,13 @@ export async function getBookingLinkBySlug(
       intervalMin: link.intervalMin,
     },
     shops,
-    menus,
+    menus: menus.map((m) => ({
+      id: m.id,
+      name: m.name,
+      durationMin: m.durationMin,
+      price: m.price,
+      staffIds: m.staffLinks.map((l) => l.staffId),
+    })),
     staffsByShop,
   };
 }

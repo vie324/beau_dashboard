@@ -98,6 +98,8 @@ export const menuSchema = z
     // リソース要否。少なくとも一方は必要。
     requiresStaff: bool.default(true),
     equipmentId: z.coerce.number().int().positive().optional().nullable(),
+    // 対応スタッフのID配列（JSON 文字列）。空/未指定 = 全スタッフ対応。
+    staffIds: z.string().optional().nullable(),
   })
   .refine((m) => m.requiresStaff || m.equipmentId != null, {
     message: "スタッフ・設備のいずれか一方は必須です",

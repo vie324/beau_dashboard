@@ -35,6 +35,9 @@ export async function getReservationFormData(shopId: number) {
         menuManageId: true,
         requiresStaff: true,
         equipmentId: true,
+        // 対応スタッフ（空 = 全員対応）。予約モーダルで対象外の担当を選んだ
+        // ときに注意書きを出すために使う。
+        staffLinks: { select: { staffId: true } },
       },
     }),
     db.customer.findMany({

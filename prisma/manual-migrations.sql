@@ -25,6 +25,20 @@ CREATE TABLE IF NOT EXISTS "CardColorPreset" (
 );
 CREATE INDEX IF NOT EXISTS "CardColorPreset_shopId_idx" ON "CardColorPreset"("shopId");
 
+-- 2026-08: メニューごとの対応スタッフ（MenuStaff）
+-- 「治療メニューは岡本・久保だけ」「堀口は美容メニューのみ」のように、
+-- メニューを担当できるスタッフを限定するための中間テーブル。
+-- 行が1件も無いメニューは制限なし（従来どおり全スタッフ対応）なので、
+-- 適用しただけでは既存の予約挙動は変わらない。
+-- 未適用だと設定画面のメニュー保存・オンライン予約の空き取得が P2021 で失敗する。
+CREATE TABLE IF NOT EXISTS "MenuStaff" (
+  "id"      SERIAL PRIMARY KEY,
+  "menuId"  INTEGER NOT NULL REFERENCES "Menu"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
+  "staffId" INTEGER NOT NULL REFERENCES "Staff"("id") ON UPDATE CASCADE ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "MenuStaff_menuId_staffId_key" ON "MenuStaff"("menuId", "staffId");
+CREATE INDEX IF NOT EXISTS "MenuStaff_staffId_idx" ON "MenuStaff"("staffId");
+
 -- 2026-06: 物販機能（PR #72 / merchandise・在庫・注文・ポイント）
 -- スキーマに Customer.pointsBalance / Shop のストアフロント設定 /
 -- ProductCategory・Product・ProductReview・InventoryItem・StockMovement・

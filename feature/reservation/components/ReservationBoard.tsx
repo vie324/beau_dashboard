@@ -740,7 +740,9 @@ export function ReservationBoard({
                           ev.stopPropagation();
                           openCardEdit(r);
                         }}
-                        title={`${minToTime(s)}–${minToTime(e)} ${name}`}
+                        title={`${minToTime(s)}–${minToTime(e)} ${name}${
+                          r.menu ? ` / ${r.menu.name}` : ""
+                        }${r.note ? `\n${r.note}` : ""}`}
                         className={`absolute z-10 flex flex-col overflow-hidden rounded-lg border px-2 py-1 text-left text-[11px] shadow-sm transition-all hover:z-20 hover:border-accent/70 hover:shadow-md ${
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
@@ -758,14 +760,18 @@ export function ReservationBoard({
                         }}
                       >
                         <div className="flex min-w-0 items-center justify-between gap-1">
-                          <span className="truncate font-semibold tabular-nums text-ink">
+                          <span className="shrink-0 font-semibold tabular-nums text-ink">
                             {minToTime(s)}
                           </span>
-                          <Badge
-                            className={`${meta.className} shrink-0 whitespace-nowrap`}
-                          >
-                            {meta.label}
-                          </Badge>
+                          {/* 短い予約はステータスバッジを出すと時刻が「1」まで
+                              潰れるので、時刻・患者名・メモを優先して省く。 */}
+                          {width >= 90 && (
+                            <Badge
+                              className={`${meta.className} shrink-0 whitespace-nowrap`}
+                            >
+                              {meta.label}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex min-w-0 items-center gap-1 font-medium text-ink">
                           {r.customer?.code && (
@@ -775,10 +781,26 @@ export function ReservationBoard({
                           )}
                           <span className="truncate">{name}</span>
                         </div>
-                        {r.menu && (
-                          <div className="truncate text-faint">
-                            {r.menu.name}
+                        {/* 患者名・患者No.に続く3点目はメモ（最優先）。メモが無い
+                            予約だけ、これまでどおりメニュー名を出す。
+                            未確認の予約は下に「未確認」行が入るので、メモは
+                            1行に抑えて押し出されないようにする。 */}
+                        {r.note ? (
+                          <div
+                            className={`whitespace-pre-wrap break-words leading-tight text-ink/80 ${
+                              !r.confirmed && !cancelled
+                                ? "line-clamp-1"
+                                : "line-clamp-2"
+                            }`}
+                          >
+                            {r.note}
                           </div>
+                        ) : (
+                          r.menu && (
+                            <div className="truncate text-faint">
+                              {r.menu.name}
+                            </div>
+                          )
                         )}
                         {!r.confirmed && !cancelled && (
                           <div className="mt-auto truncate font-semibold text-warn">

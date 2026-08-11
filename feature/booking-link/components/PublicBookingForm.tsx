@@ -10,6 +10,7 @@ import {
   type AvailabilityResult,
 } from "@/feature/booking-link/actions/publicBookingActions";
 import type { PublicBookingData } from "@/feature/booking-link/services/getBookingLinkBySlug";
+import { capableStaffIds } from "@/helper/utils/menuStaff";
 
 function todayJst(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -71,10 +72,25 @@ export function PublicBookingForm({
     return () => clearTimeout(t);
   }, [picked]);
 
-  const staffOptions = useMemo(
-    () => data.staffsByShop[shopId] ?? [],
-    [shopId, data.staffsByShop],
-  );
+  // 指名できるのは、選んだメニューを担当できるスタッフだけ（設定「対応スタッフ」）。
+  const staffOptions = useMemo(() => {
+    const all = data.staffsByShop[shopId] ?? [];
+    const menuStaffIds =
+      data.menus.find((m) => m.id === menuId)?.staffIds ?? [];
+    const capable = new Set(
+      capableStaffIds(
+        all.map((s) => s.id),
+        menuStaffIds,
+      ),
+    );
+    return all.filter((s) => capable.has(s.id));
+  }, [shopId, menuId, data.staffsByShop, data.menus]);
+
+  // メニューを変えて対応できない人が選ばれたままにならないよう指名を解除する。
+  useEffect(() => {
+    if (!staffId) return;
+    if (!staffOptions.some((s) => String(s.id) === staffId)) setStaffId("");
+  }, [staffOptions, staffId]);
 
   useEffect(() => {
     if (!shopId || !menuId) return;

@@ -128,6 +128,7 @@ model Staff {
   deletedAt     DateTime?
   shop          Shop          @relation(fields: [shopId], references: [id])
   appointments  Appointment[]
+  menuLinks     MenuStaff[]
 }
 
 model Customer {
@@ -192,6 +193,25 @@ model Menu {
   category     MenuCategory? @relation(fields: [categoryId], references: [id])
   equipment    Equipment?    @relation(fields: [equipmentId], references: [id])
   appointments Appointment[]
+  staffLinks   MenuStaff[]
+}
+
+// メニューごとの「対応できるスタッフ」。
+//   行が1件も無いメニュー … 制限なし（全スタッフが対応できる＝従来どおり）
+//   行があるメニュー     … そこに載っているスタッフだけが対応できる
+// オンライン予約（公開リンク）の空き判定・自動割当で使う。
+// Staff は店舗スコープなので、全店舗共通メニュー (shopId = null) でも
+// 店舗ごとに別々の対応スタッフを設定できる。ある店舗のスタッフが1人も
+// 登録されていないメニューは、その店舗では「制限なし」として扱う。
+model MenuStaff {
+  id      Int   @id @default(autoincrement())
+  menuId  Int
+  staffId Int
+  menu    Menu  @relation(fields: [menuId], references: [id])
+  staff   Staff @relation(fields: [staffId], references: [id])
+
+  @@unique([menuId, staffId])
+  @@index([staffId])
 }
 
 model VisitSource {

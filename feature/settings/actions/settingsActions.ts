@@ -19,6 +19,7 @@ import {
   serializeDateOverrides,
 } from "@/helper/utils/shopHours";
 import { parseWorkDates, serializeWorkDates } from "@/helper/utils/staffWork";
+import { parseStaffIds } from "@/helper/utils/menuStaff";
 
 /** Round-trip the work-dates JSON: drop invalid entries before persisting. */
 function cleanWorkDates(raw: string | null | undefined): string | null {
@@ -200,6 +201,9 @@ export async function deleteStaff(id: number): Promise<ActionResult> {
   if (!exists) return fail("スタッフが見つかりません");
   try {
     await db.staff.update({ where: { id }, data: { deletedAt: new Date() } });
+    // メニューの「対応スタッフ」からも外す（残しても判定には効かないが、
+    // 設定画面に消えた人の分が残らないようにする）。
+    await db.menuStaff.deleteMany({ where: { staffId: id } });
   } catch {
     return fail("削除に失敗しました");
   }
@@ -286,6 +290,39 @@ export async function deleteEquipment(id: number): Promise<ActionResult> {
 
 /* ---------------- Menus ---------------- */
 
+/**
+ * メニューの「対応スタッフ」を保存する。
+ * 表示中の店舗のスタッフぶんだけを差し替えるので、全店舗共通メニューでも
+ * 他店舗で設定した対応スタッフは消えない。空配列 = この店舗では制限なし。
+ */
+async function syncMenuStaff(
+  menuId: number,
+  shopId: number,
+  rawStaffIds: string | null | undefined,
+) {
+  // フィールド自体が送られていないフォームでは、既存の設定を消さない。
+  if (rawStaffIds === undefined) return;
+  const shopStaffIds = (
+    await db.staff.findMany({
+      where: { shopId, deletedAt: null },
+      select: { id: true },
+    })
+  ).map((s) => s.id);
+  const wanted = parseStaffIds(rawStaffIds).filter((id) =>
+    shopStaffIds.includes(id),
+  );
+
+  await db.menuStaff.deleteMany({
+    where: { menuId, staffId: { in: shopStaffIds } },
+  });
+  if (wanted.length) {
+    await db.menuStaff.createMany({
+      data: wanted.map((staffId) => ({ menuId, staffId })),
+      skipDuplicates: true,
+    });
+  }
+}
+
 export async function saveMenu(
   _prev: ActionResult | null,
   formData: FormData,
@@ -321,10 +358,11 @@ export async function saveMenu(
           equipmentId: input.equipmentId ?? null,
         },
       });
+      await syncMenuStaff(input.id, shopId, input.staffIds);
     } else {
       const prefix = input.brandCommon ? "BRD" : "STR";
       const menuManageId = `${prefix}-${Date.now().toString(36).toUpperCase()}`;
-      await db.menu.create({
+      const created = await db.menu.create({
         data: {
           menuManageId,
           name: input.name,
@@ -336,7 +374,9 @@ export async function saveMenu(
           requiresStaff: input.requiresStaff,
           equipmentId: input.equipmentId ?? null,
         },
+        select: { id: true },
       });
+      await syncMenuStaff(created.id, shopId, input.staffIds);
     }
   } catch {
     return fail("保存に失敗しました。時間をおいて再度お試しください");
