@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { getActiveShopId } from "@/helper/lib/shop-context";
 import { getCurrentUser } from "@/helper/lib/auth";
+import { reverseOrderEffects } from "@/feature/order/lib/finalizeOrder";
+import { getStripe, isStripeConfigured } from "@/helper/lib/stripe";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -36,8 +38,9 @@ export async function updateOrderStatus(
 }
 
 /**
- * 注文キャンセル。在庫はチェックアウト時に予約済みなので、未発送・決済済みに
- * 関わらず引き当て済み在庫を戻す。決済済みなら付与済みポイントも取り消す。
+ * 注文キャンセル。在庫・利用ポイント・クーポン回数はチェックアウト時に引き当て済み
+ * なので、未発送・決済済みに関わらず戻す。決済済みなら付与済みポイントも取り消す
+ * （付与・利用は正味で打ち消すので、残高は注文前の状態に戻る）。
  * （Stripe 側の返金は管理者がダッシュボードで実施する想定。ここでは社内データの
  *  整合のみ行い paymentStatus を refunded にする。）
  * 原子的: status が cancelled でない行を1回だけ確定し、二重取消を防ぐ。
@@ -45,6 +48,41 @@ export async function updateOrderStatus(
 export async function cancelOrder(id: number): Promise<ActionResult> {
   if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
   const shopId = await getActiveShopId();
+
+  // 未決済の注文は、お客様が Stripe の決済ページを開いたままの可能性がある。
+  // 先に Checkout Session を失効させ、「取消後に支払いが完了して注文が宙に浮く」事故を防ぐ。
+  // セッションが既に完了していれば webhook で決済済みになるので、取消は保留させる。
+  const target = await db.order.findFirst({
+    where: { id, shopId, deletedAt: null },
+    select: { paymentStatus: true, stripeSessionId: true },
+  });
+  if (!target) return { ok: false, error: "注文が見つかりません" };
+  if (
+    target.paymentStatus === "pending" &&
+    target.stripeSessionId &&
+    isStripeConfigured()
+  ) {
+    try {
+      const session = await getStripe().checkout.sessions.retrieve(
+        target.stripeSessionId,
+      );
+      if (session.status === "complete") {
+        return {
+          ok: false,
+          error:
+            "お客様の決済が完了しています。画面を更新して決済済みの注文として取り消してください",
+        };
+      }
+      if (session.status === "open") {
+        await getStripe().checkout.sessions.expire(target.stripeSessionId);
+      }
+    } catch {
+      return {
+        ok: false,
+        error: "Stripe の決済状態を確認できませんでした。時間をおいて再度お試しください",
+      };
+    }
+  }
 
   try {
     await db.$transaction(async (tx) => {
@@ -99,51 +137,8 @@ export async function cancelOrder(id: number): Promise<ActionResult> {
         return; // 既に取消/返金済み、または確定不能
       }
 
-      const order = await tx.order.findUnique({
-        where: { id },
-        include: { items: true, pointTransactions: true },
-      });
-      if (!order) return;
-
-      // 予約在庫を戻す（competition-safe な increment）
-      for (const item of order.items) {
-        if (!item.productId) continue;
-        await tx.inventoryItem.updateMany({
-          where: { productId: item.productId, shopId },
-          data: { quantity: { increment: item.qty } },
-        });
-        await tx.stockMovement.create({
-          data: {
-            shopId,
-            productId: item.productId,
-            type: "adjust",
-            qty: item.qty,
-            reason: `注文取消 ${order.orderNo}`,
-            orderId: order.id,
-          },
-        });
-      }
-
-      // 付与済みポイントの取消（earn の正味分を戻す）
-      const earned = order.pointTransactions
-        .filter((t) => t.type === "earn")
-        .reduce((s, t) => s + t.points, 0);
-      if (earned > 0 && order.customerId) {
-        await tx.pointTransaction.create({
-          data: {
-            shopId,
-            customerId: order.customerId,
-            orderId: order.id,
-            type: "adjust",
-            points: -earned,
-            reason: `注文取消 ${order.orderNo}`,
-          },
-        });
-        await tx.customer.update({
-          where: { id: order.customerId },
-          data: { pointsBalance: { decrement: earned } },
-        });
-      }
+      // 在庫戻し・ポイントの正味打ち消し・クーポン回数の戻し
+      await reverseOrderEffects(tx, id, "注文取消");
     });
   } catch (e) {
     return {
@@ -153,5 +148,6 @@ export async function cancelOrder(id: number): Promise<ActionResult> {
   }
   revalidatePath("/orders");
   revalidatePath("/products");
+  revalidatePath("/customers");
   return { ok: true };
 }

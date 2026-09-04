@@ -29,6 +29,13 @@ const config: Config = {
         danger: "#c8554f",
         info: "#5580ad",
       },
+      // 注意: 色に `base` があるため `text-base` は「フォントサイズ 1rem」と
+      // 「文字色 #f4efe6」の両方の CSS を生成し、色の方がアルファベット順で
+      // text-accent より後に出るため accent 文字を背景色で潰してしまう。
+      // 16px のフォントサイズには `text-md` を使うこと。
+      fontSize: {
+        md: ["1rem", { lineHeight: "1.5rem" }],
+      },
       fontFamily: {
         sans: [
           "ui-sans-serif",

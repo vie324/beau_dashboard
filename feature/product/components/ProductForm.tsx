@@ -10,7 +10,12 @@ import type {
   ProductRow,
   CategoryRow,
 } from "@/feature/product/services/getProducts";
-import { parseImageUrls, taxInclusiveUnit, formatYen } from "@/helper/utils/retail";
+import {
+  parseImageUrls,
+  taxInclusiveUnit,
+  formatYen,
+  discountPercent,
+} from "@/helper/utils/retail";
 
 export function ProductForm({
   open,
@@ -32,11 +37,15 @@ export function ProductForm({
     sku: initial?.sku ?? "",
     categoryId: initial?.categoryId ? String(initial.categoryId) : "",
     price: initial ? String(initial.price) : "",
+    compareAtPrice: initial?.compareAtPrice ? String(initial.compareAtPrice) : "",
     cost: initial ? String(initial.cost) : "0",
     taxRate: initial ? String(initial.taxRate) : "10",
+    tagline: initial?.tagline ?? "",
     description: initial?.description ?? "",
     imageUrlsText: parseImageUrls(initial?.imageUrls).join("\n"),
     isPublic: initial ? initial.isPublic : true,
+    isFeatured: initial ? initial.isFeatured : false,
+    featuredComment: initial?.featuredComment ?? "",
     initialStock: "0",
     safetyStock: initial ? String(initial.safetyStock) : "0",
   });
@@ -45,7 +54,9 @@ export function ProductForm({
     setForm((f) => ({ ...f, [k]: v }));
 
   const priceNum = Number(form.price) || 0;
+  const compareNum = Number(form.compareAtPrice) || 0;
   const taxNum = Number(form.taxRate) || 0;
+  const off = discountPercent(priceNum, compareNum);
 
   function submit() {
     setError(null);
@@ -55,12 +66,17 @@ export function ProductForm({
     if (form.sku.trim()) fd.set("sku", form.sku.trim());
     if (form.categoryId) fd.set("categoryId", form.categoryId);
     fd.set("price", form.price.trim() || "0");
+    if (form.compareAtPrice.trim()) fd.set("compareAtPrice", form.compareAtPrice.trim());
     fd.set("cost", form.cost.trim() || "0");
     fd.set("taxRate", form.taxRate.trim() || "10");
+    if (form.tagline.trim()) fd.set("tagline", form.tagline.trim());
     if (form.description.trim()) fd.set("description", form.description.trim());
     if (form.imageUrlsText.trim())
       fd.set("imageUrlsText", form.imageUrlsText.trim());
     if (form.isPublic) fd.set("isPublic", "on");
+    if (form.isFeatured) fd.set("isFeatured", "on");
+    if (form.featuredComment.trim())
+      fd.set("featuredComment", form.featuredComment.trim());
     if (!initial) {
       fd.set("initialStock", form.initialStock.trim() || "0");
     }
@@ -82,6 +98,16 @@ export function ProductForm({
       open={open}
       onClose={onClose}
       title={initial ? "商品の編集" : "新規商品の追加"}
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
+            キャンセル
+          </Button>
+          <Button size="sm" onClick={submit} disabled={pending}>
+            {pending ? "保存中…" : "保存"}
+          </Button>
+        </div>
+      }
     >
       <div className="space-y-4">
         <div>
@@ -91,6 +117,16 @@ export function ProductForm({
             onChange={(e) => set("name", e.target.value)}
             placeholder="腰用サポーター M"
             maxLength={120}
+          />
+        </div>
+
+        <div>
+          <Label>キャッチコピー</Label>
+          <Input
+            value={form.tagline}
+            onChange={(e) => set("tagline", e.target.value)}
+            placeholder="デスクワークの腰をしっかりサポート（一覧カードに表示）"
+            maxLength={80}
           />
         </div>
 
@@ -158,6 +194,31 @@ export function ProductForm({
           税込販売価格：{formatYen(taxInclusiveUnit(priceNum, taxNum))}
         </p>
 
+        <div className="rounded-xl border border-line bg-base/50 p-3">
+          <Label>通常価格(税抜)・セール表示</Label>
+          <div className="flex items-center gap-3">
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={form.compareAtPrice}
+              onChange={(e) => set("compareAtPrice", e.target.value)}
+              placeholder="（任意）例: 3800"
+              min={0}
+              className="max-w-[12rem]"
+            />
+            {off > 0 ? (
+              <span className="rounded-full bg-danger px-2 py-0.5 text-[11px] font-bold text-white">
+                {off}%OFF 表示
+              </span>
+            ) : (
+              <span className="text-xs text-faint">販売価格より高いときにセール表示</span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-faint">
+            公開ページで通常価格に打消し線を引き、割引率バッジを表示します。空欄で通常販売。
+          </p>
+        </div>
+
         <div>
           <Label>商品説明</Label>
           <Textarea
@@ -204,6 +265,33 @@ export function ProductForm({
           </div>
         </div>
 
+        <div className="space-y-2 rounded-xl border border-accent/30 bg-accent-soft/40 p-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={form.isFeatured}
+              onChange={(e) => set("isFeatured", e.target.checked)}
+              className="h-4 w-4 accent-accent"
+            />
+            スタッフのおすすめに掲載する
+          </label>
+          {form.isFeatured && (
+            <div className="animate-slide-up">
+              <Label>おすすめコメント（施術者からの一言）</Label>
+              <Textarea
+                value={form.featuredComment}
+                onChange={(e) => set("featuredComment", e.target.value)}
+                placeholder="施術後のケアに一番おすすめしているサポーターです。"
+                maxLength={300}
+                className="min-h-[60px]"
+              />
+              <p className="mt-1 text-xs text-faint">
+                公開ページ上部の「スタッフのおすすめ」枠と商品ページに表示されます。
+              </p>
+            </div>
+          )}
+        </div>
+
         <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
@@ -219,15 +307,6 @@ export function ProductForm({
             {error}
           </p>
         )}
-
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
-            キャンセル
-          </Button>
-          <Button size="sm" onClick={submit} disabled={pending}>
-            {pending ? "保存中…" : "保存"}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

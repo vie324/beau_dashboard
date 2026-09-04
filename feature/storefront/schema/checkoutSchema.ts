@@ -21,6 +21,11 @@ export const checkoutSchema = z.object({
   fulfillment: z.enum(["pickup", "shipping"]),
   shippingAddress: z.string().trim().max(300).optional().nullable(),
   note: z.string().trim().max(500).optional().nullable(),
+  // 会員確認トークン（verifyMember が発行）。ポイント利用と注文の顧客紐付けに使う。
+  memberToken: z.string().trim().max(600).optional().nullable(),
+  // 利用ポイント（1pt = 1円）。サーバ側で残高・支払額に合わせて確定する。
+  pointsToUse: z.coerce.number().int().min(0).max(10_000_000).optional().default(0),
+  couponCode: z.string().trim().max(40).optional().nullable(),
 });
 
-export type CheckoutInput = z.infer<typeof checkoutSchema>;
+export type CheckoutInput = z.input<typeof checkoutSchema>;

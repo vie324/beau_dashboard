@@ -168,6 +168,14 @@ export function OrdersClient({
                         )}
                         {o.buyerPhone && <span>{o.buyerPhone}</span>}
                         <span>{o.items.length}点</span>
+                        {o.pointsUsed > 0 && (
+                          <span className="text-info">−{o.pointsUsed}pt利用</span>
+                        )}
+                        {o.discountAmount > 0 && (
+                          <span className="text-info">
+                            クーポン{o.couponCode ? ` ${o.couponCode}` : ""}
+                          </span>
+                        )}
                         {o.pointsEarned > 0 && (
                           <span>+{o.pointsEarned}pt</span>
                         )}
@@ -212,11 +220,32 @@ export function OrdersClient({
                           <span>消費税</span>
                           <span className="tabular-nums">{formatYen(o.taxTotal)}</span>
                         </div>
+                        {o.discountAmount > 0 && (
+                          <div className="flex justify-between text-ok">
+                            <span>
+                              クーポン値引き
+                              {o.couponCode && (
+                                <span className="ml-1 font-mono">{o.couponCode}</span>
+                              )}
+                            </span>
+                            <span className="tabular-nums">
+                              −{formatYen(o.discountAmount)}
+                            </span>
+                          </div>
+                        )}
                         {o.shippingFee > 0 && (
                           <div className="flex justify-between">
                             <span>送料</span>
                             <span className="tabular-nums">
                               {formatYen(o.shippingFee)}
+                            </span>
+                          </div>
+                        )}
+                        {o.pointsUsed > 0 && (
+                          <div className="flex justify-between text-ok">
+                            <span>ポイント利用</span>
+                            <span className="tabular-nums">
+                              −{formatYen(o.pointsUsed)}
                             </span>
                           </div>
                         )}

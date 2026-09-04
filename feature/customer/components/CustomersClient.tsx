@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { CustomerForm } from "@/feature/customer/components/CustomerForm";
 import { CustomerImportModal } from "@/feature/customer/components/CustomerImportModal";
+import { CustomerDetailModal } from "@/feature/customer/components/CustomerDetailModal";
 import { deleteCustomer } from "@/feature/customer/actions/customerActions";
 import type { CustomerRow } from "@/feature/customer/services/getCustomers";
 import { filterCustomersByQuery } from "@/helper/utils/customerSort";
@@ -31,6 +32,7 @@ export function CustomersClient({
   const [editing, setEditing] = useState<CustomerRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [detailFor, setDetailFor] = useState<CustomerRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   const filtered = useMemo(
@@ -141,8 +143,15 @@ export function CustomersClient({
                         {c.purchaseTotal.toLocaleString("ja-JP")}
                       </span>
                     )}
-                    {c.pointsBalance > 0 && (
-                      <span className="rounded-md border border-accent/40 bg-accent-soft px-1.5 text-accent">
+                    {c.pointsBalance !== 0 && (
+                      <span
+                        className={
+                          "rounded-md border px-1.5 " +
+                          (c.pointsBalance > 0
+                            ? "border-accent/40 bg-accent-soft text-accent"
+                            : "border-danger/40 bg-danger/10 text-danger")
+                        }
+                      >
                         {c.pointsBalance.toLocaleString("ja-JP")}pt
                       </span>
                     )}
@@ -154,6 +163,15 @@ export function CustomersClient({
                   )}
                 </button>
                 <div className="flex shrink-0 gap-2 self-end sm:self-auto">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDetailFor(c)}
+                    disabled={pending}
+                    title="ポイント台帳・購入履歴・手動付与"
+                  >
+                    ポイント
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -187,6 +205,15 @@ export function CustomersClient({
           onClose={() => setImporting(false)}
           shops={shops}
           defaultShopId={activeShopId}
+        />
+      )}
+
+      {detailFor && (
+        <CustomerDetailModal
+          open
+          customerId={detailFor.id}
+          customerName={detailFor.name}
+          onClose={() => setDetailFor(null)}
         />
       )}
     </>

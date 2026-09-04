@@ -25,9 +25,12 @@ export function StorefrontSettingsModal({
     storeSlug: shop.storeSlug ?? "",
     storeTitle: shop.storeTitle ?? "",
     storeDescription: shop.storeDescription ?? "",
+    storeAnnouncement: shop.storeAnnouncement ?? "",
+    storeHeroImageUrl: shop.storeHeroImageUrl ?? "",
     shippingFee: String(shop.shippingFee),
     freeShippingThreshold: String(shop.freeShippingThreshold),
     pointRatePercent: String(shop.pointRatePercent),
+    allowPointRedeem: shop.allowPointRedeem,
   });
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -36,10 +39,15 @@ export function StorefrontSettingsModal({
     setError(null);
     const fd = new FormData();
     if (form.storeActive) fd.set("storeActive", "on");
+    if (form.allowPointRedeem) fd.set("allowPointRedeem", "on");
     if (form.storeSlug.trim()) fd.set("storeSlug", form.storeSlug.trim());
     if (form.storeTitle.trim()) fd.set("storeTitle", form.storeTitle.trim());
     if (form.storeDescription.trim())
       fd.set("storeDescription", form.storeDescription.trim());
+    if (form.storeAnnouncement.trim())
+      fd.set("storeAnnouncement", form.storeAnnouncement.trim());
+    if (form.storeHeroImageUrl.trim())
+      fd.set("storeHeroImageUrl", form.storeHeroImageUrl.trim());
     fd.set("shippingFee", form.shippingFee.trim() || "0");
     fd.set("freeShippingThreshold", form.freeShippingThreshold.trim() || "0");
     fd.set("pointRatePercent", form.pointRatePercent.trim() || "0");
@@ -56,7 +64,21 @@ export function StorefrontSettingsModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="販売ページ設定">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="販売ページ設定"
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
+            キャンセル
+          </Button>
+          <Button size="sm" onClick={submit} disabled={pending}>
+            {pending ? "保存中…" : "保存"}
+          </Button>
+        </div>
+      }
+    >
       <div className="space-y-4">
         <div>
           <Label>公開URLスラッグ</Label>
@@ -92,6 +114,33 @@ export function StorefrontSettingsModal({
             placeholder="店頭でも人気のセルフケアグッズをオンラインでも。"
             maxLength={1000}
           />
+        </div>
+
+        <div>
+          <Label>お知らせ（ページ上部に表示）</Label>
+          <Textarea
+            value={form.storeAnnouncement}
+            onChange={(e) => set("storeAnnouncement", e.target.value)}
+            placeholder="例）9月はサポーター全品セール中／年末年始の発送は1/6以降になります"
+            maxLength={300}
+            className="min-h-[60px]"
+          />
+          <p className="mt-1 text-xs text-faint">
+            キャンペーンや発送のお知らせに。空欄なら表示されません。
+          </p>
+        </div>
+
+        <div>
+          <Label>ヒーロー画像URL</Label>
+          <Input
+            value={form.storeHeroImageUrl}
+            onChange={(e) => set("storeHeroImageUrl", e.target.value)}
+            placeholder="https://example.com/hero.jpg（任意）"
+            maxLength={500}
+          />
+          <p className="mt-1 text-xs text-faint">
+            ページ上部の背景に表示します。横長（例: 1600×600）の画像がきれいに収まります。
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -139,6 +188,19 @@ export function StorefrontSettingsModal({
         <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
+            checked={form.allowPointRedeem}
+            onChange={(e) => set("allowPointRedeem", e.target.checked)}
+            className="h-4 w-4 accent-accent"
+          />
+          販売ページでのポイント利用（1pt=1円の値引き）を許可する
+        </label>
+        <p className="-mt-2 pl-6 text-xs text-faint">
+          オフにしてもポイントは貯まります（利用は店頭のみ）。会員確認は会員番号（またはメール）＋電話番号で行います。
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
             checked={form.storeActive}
             onChange={(e) => set("storeActive", e.target.checked)}
             className="h-4 w-4 accent-accent"
@@ -151,15 +213,6 @@ export function StorefrontSettingsModal({
             {error}
           </p>
         )}
-
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
-            キャンセル
-          </Button>
-          <Button size="sm" onClick={submit} disabled={pending}>
-            {pending ? "保存中…" : "保存"}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

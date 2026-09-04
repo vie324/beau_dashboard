@@ -11,6 +11,8 @@ import { CategoryManagerModal } from "@/feature/product/components/CategoryManag
 import { StorefrontSettingsModal } from "@/feature/product/components/StorefrontSettingsModal";
 import { LegalInfoModal } from "@/feature/product/components/LegalInfoModal";
 import { ReviewsModal } from "@/feature/product/components/ReviewsModal";
+import { CouponManagerModal } from "@/feature/coupon/components/CouponManagerModal";
+import type { CouponRow } from "@/feature/coupon/services/getCoupons";
 import { StarRating } from "@/feature/storefront/components/StarRating";
 import { deleteProduct } from "@/feature/product/actions/productActions";
 import type {
@@ -22,6 +24,7 @@ import type { ShopRetail } from "@/feature/order/services/getShopRetail";
 import {
   formatYen,
   taxInclusiveUnit,
+  discountPercent,
   STOCK_MOVEMENT_LABELS,
 } from "@/helper/utils/retail";
 
@@ -38,12 +41,14 @@ export function ProductsClient({
   categories,
   movements,
   shop,
+  coupons,
   appUrl,
 }: {
   products: ProductRow[];
   categories: CategoryRow[];
   movements: StockMovementRow[];
   shop: ShopRetail;
+  coupons: CouponRow[];
   appUrl: string;
 }) {
   const router = useRouter();
@@ -56,6 +61,7 @@ export function ProductsClient({
   const [showCats, setShowCats] = useState(false);
   const [showStore, setShowStore] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
+  const [showCoupons, setShowCoupons] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -71,6 +77,11 @@ export function ProductsClient({
 
   const lowStockCount = products.filter((p) => p.lowStock).length;
   const storeUrl = shop.storeSlug ? `${appUrl}/shop/${shop.storeSlug}` : null;
+  const activeCoupons = coupons.filter((c) => c.isActive).length;
+  const featuredCount = products.filter((p) => p.isFeatured).length;
+  const saleCount = products.filter(
+    (p) => discountPercent(p.price, p.compareAtPrice) > 0,
+  ).length;
 
   function handleDelete(p: ProductRow) {
     if (!confirm(`「${p.name}」を削除しますか？（過去の注文履歴は残ります）`)) return;
@@ -116,6 +127,12 @@ export function ProductsClient({
               {shop.freeShippingThreshold > 0 &&
                 `（${formatYen(shop.freeShippingThreshold)}以上で無料）`}
               {" ／ "}ポイント付与 {shop.pointRatePercent}%
+              {" ／ "}ポイント利用 {shop.allowPointRedeem ? "可" : "店頭のみ"}
+              {" ／ "}クーポン {activeCoupons}件有効
+            </p>
+            <p className="mt-0.5 text-xs text-faint">
+              おすすめ掲載 {featuredCount}点 ／ セール中 {saleCount}点
+              {shop.storeAnnouncement && " ／ お知らせ表示中"}
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -125,6 +142,9 @@ export function ProductsClient({
               onClick={() => setShowLegal(true)}
             >
               特商法の表記
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowCoupons(true)}>
+              クーポン{activeCoupons > 0 ? `（${activeCoupons}）` : ""}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowStore(true)}>
               販売ページ設定
@@ -208,6 +228,16 @@ export function ProductsClient({
                         {!p.isPublic && (
                           <Badge className="border-line bg-elevated text-muted">
                             非公開
+                          </Badge>
+                        )}
+                        {discountPercent(p.price, p.compareAtPrice) > 0 && (
+                          <Badge className="border-danger/40 bg-danger/10 text-danger">
+                            {discountPercent(p.price, p.compareAtPrice)}%OFF
+                          </Badge>
+                        )}
+                        {p.isFeatured && (
+                          <Badge className="border-accent/40 bg-accent-soft text-accent-fg">
+                            おすすめ
                           </Badge>
                         )}
                         {p.lowStock && (
@@ -359,6 +389,13 @@ export function ProductsClient({
           open
           legalInfo={shop.legalInfo}
           onClose={() => setShowLegal(false)}
+        />
+      )}
+      {showCoupons && (
+        <CouponManagerModal
+          open
+          coupons={coupons}
+          onClose={() => setShowCoupons(false)}
         />
       )}
       {reviewsFor && (

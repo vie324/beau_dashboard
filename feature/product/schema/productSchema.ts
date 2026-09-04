@@ -36,6 +36,24 @@ export const productSchema = z.object({
     .refine((v) => v === 0 || v === 8 || v === 10, "税率は0/8/10%のいずれかです")
     .optional()
     .default(10),
+  // 通常価格（税抜）。販売価格より高いときだけセール表示になる。0/空は「設定なし」。
+  compareAtPrice: z.coerce
+    .number()
+    .int("通常価格は整数で入力してください")
+    .min(0)
+    .max(10_000_000)
+    .optional()
+    .nullable(),
+  // 一覧カードに出す短いキャッチコピー
+  tagline: z.string().trim().max(80, "キャッチコピーは80文字以内で入力してください").optional().nullable(),
+  // スタッフのおすすめ + コメント
+  isFeatured: boolish.optional().default(false),
+  featuredComment: z
+    .string()
+    .trim()
+    .max(300, "おすすめコメントは300文字以内で入力してください")
+    .optional()
+    .nullable(),
   // 改行区切りの画像URL（フォーム入力）→ action 側で JSON 配列に変換
   imageUrlsText: z.string().trim().max(4000).optional().nullable(),
   isPublic: boolish.optional().default(true),
@@ -85,6 +103,20 @@ export const storefrontSettingsSchema = z.object({
     .optional()
     .default(0),
   pointRatePercent: z.coerce.number().int().min(0).max(100).optional().default(0),
+  allowPointRedeem: boolish.optional().default(true),
+  storeAnnouncement: z
+    .string()
+    .trim()
+    .max(300, "お知らせは300文字以内で入力してください")
+    .optional()
+    .nullable(),
+  storeHeroImageUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .url("ヒーロー画像URLの形式が正しくありません")
+    .optional()
+    .nullable(),
 });
 
 export const legalInfoSchema = z.object({

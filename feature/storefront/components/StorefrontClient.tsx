@@ -1,28 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, Textarea, Select } from "@/components/ui/Input";
-import type { StorefrontData } from "@/feature/storefront/services/getStorefront";
-import { createCheckout } from "@/feature/storefront/actions/checkoutActions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Input, Select } from "@/components/ui/Input";
+import type {
+  StorefrontData,
+  StorefrontProduct,
+} from "@/feature/storefront/services/getStorefront";
 import { ProductCard } from "@/feature/storefront/components/ProductCard";
 import { CartDrawer } from "@/feature/storefront/components/CartDrawer";
+import { PriceTag } from "@/feature/storefront/components/PriceTag";
+import {
+  CartIcon,
+  SearchIcon,
+  SparkleIcon,
+  TrophyIcon,
+  ClockIcon,
+} from "@/feature/storefront/components/icons";
 import {
   readCart,
   writeCart,
-  clearCart,
+  OPEN_CART_EVENT,
   type CartEntry,
 } from "@/feature/storefront/lib/cart";
 import { readWishlist, toggleWishlist } from "@/feature/storefront/lib/wishlist";
 import { readRecentlyViewed } from "@/feature/storefront/lib/recentlyViewed";
-import {
-  formatYen,
-  taxInclusiveUnit,
-  effectiveShipping,
-} from "@/helper/utils/retail";
+import { formatYen, taxInclusiveUnit, parseImageUrls } from "@/helper/utils/retail";
 
-type SortKey = "recommended" | "price-asc" | "price-desc" | "new";
+type SortKey = "recommended" | "popular" | "new" | "price-asc" | "price-desc";
+type Filter = "all" | "wish" | "sale" | number;
 
 // 1注文あたりの数量上限（checkoutSchema の qty.max(99) と一致させる）。
 const MAX_QTY = 99;
@@ -41,13 +46,11 @@ export function StorefrontClient({
   const [wishlist, setWishlist] = useState<number[]>([]);
   const [recent, setRecent] = useState<number[]>([]);
   const [query, setQuery] = useState("");
-  const [activeCat, setActiveCat] = useState<number | "all" | "wish">("all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [sort, setSort] = useState<SortKey>("recommended");
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
   const toastTimer = useRef<number | null>(null);
 
   const productById = useMemo(
@@ -76,6 +79,16 @@ export function StorefrontClient({
     if (openCartInitially) setCartOpen(true);
   }, [slug, openCartInitially, productById]);
 
+  // ヘッダーのカートボタン → ドロワーを開く（preventDefault で「処理済み」を伝える）
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      e.preventDefault();
+      setCartOpen(true);
+    };
+    window.addEventListener(OPEN_CART_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_CART_EVENT, onOpen);
+  }, []);
+
   // トーストタイマーのクリーンアップ（アンマウント後の setState 防止）
   useEffect(
     () => () => {
@@ -95,15 +108,16 @@ export function StorefrontClient({
     toastTimer.current = window.setTimeout(() => setToast(null), 1800);
   }
 
-  function add(productId: number) {
+  /** カートに1点追加。追加できなければ false（上限・在庫切れ）。 */
+  function add(productId: number): boolean {
     const p = productById.get(productId);
-    if (!p || p.stock <= 0) return;
+    if (!p || p.stock <= 0) return false;
     const cap = Math.min(p.stock, MAX_QTY);
     const found = cart.find((e) => e.productId === productId);
     const current = found?.qty ?? 0;
     if (current >= cap) {
       flashToast(current >= MAX_QTY ? "数量の上限です" : "在庫の上限です");
-      return;
+      return false;
     }
     // 既存オブジェクトを破壊せず、新しい配列・新しい要素を作る（state の不変性）
     const next = found
@@ -113,6 +127,7 @@ export function StorefrontClient({
       : [...cart, { productId, qty: 1 }];
     persistCart(next);
     flashToast(`「${p.name}」をカートに追加しました`);
+    return true;
   }
 
   function setQty(productId: number, qty: number) {
@@ -127,7 +142,13 @@ export function StorefrontClient({
   }
 
   function toggleWish(productId: number) {
-    setWishlist(toggleWishlist(slug, productId));
+    const next = toggleWishlist(slug, productId);
+    setWishlist(next);
+    flashToast(
+      next.includes(productId)
+        ? "お気に入りに追加しました"
+        : "お気に入りから削除しました",
+    );
   }
 
   const cartLines = cart
@@ -149,23 +170,43 @@ export function StorefrontClient({
       : 0;
 
   const wishSet = useMemo(() => new Set(wishlist), [wishlist]);
+  const inCart = useMemo(() => new Set(cart.map((e) => e.productId)), [cart]);
+
+  const categoryCounts = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const p of products) {
+      if (p.categoryId != null) m.set(p.categoryId, (m.get(p.categoryId) ?? 0) + 1);
+    }
+    return m;
+  }, [products]);
+  const saleCount = useMemo(
+    () => products.filter((p) => p.discountPercent > 0).length,
+    [products],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = products.filter((p) => {
-      if (activeCat === "wish") {
+      if (filter === "wish") {
         if (!wishSet.has(p.id)) return false;
-      } else if (activeCat !== "all" && p.categoryId !== activeCat) {
+      } else if (filter === "sale") {
+        if (p.discountPercent <= 0) return false;
+      } else if (filter !== "all" && p.categoryId !== filter) {
         return false;
       }
+      if (inStockOnly && p.stock <= 0) return false;
       if (!q) return true;
       return (
         p.name.toLowerCase().includes(q) ||
+        (p.tagline ?? "").toLowerCase().includes(q) ||
         (p.description ?? "").toLowerCase().includes(q)
       );
     });
     list = [...list];
     switch (sort) {
+      case "popular":
+        list.sort((a, b) => b.soldCount - a.soldCount || b.ratingCount - a.ratingCount);
+        break;
       case "price-asc":
         list.sort((a, b) => a.price - b.price);
         break;
@@ -179,117 +220,241 @@ export function StorefrontClient({
         break; // recommended = サーバの並び（sortNumber）
     }
     return list;
-  }, [products, query, activeCat, sort, wishSet]);
+  }, [products, query, filter, sort, inStockOnly, wishSet]);
+
+  const featured = useMemo(
+    () => products.filter((p) => p.isFeatured).slice(0, 3),
+    [products],
+  );
+  const ranked = useMemo(
+    () =>
+      products
+        .filter((p) => p.salesRank != null)
+        .sort((a, b) => (a.salesRank ?? 99) - (b.salesRank ?? 99)),
+    [products],
+  );
+  // 「あわせて買いたい」: カートに無い在庫ありの商品。カート内商品と同カテゴリを優先し、
+  // 次におすすめ・人気を並べる。
+  const suggestions = useMemo(() => {
+    if (cart.length === 0) return [] as StorefrontProduct[];
+    const cats = new Set(
+      cart
+        .map((e) => productById.get(e.productId)?.categoryId)
+        .filter((c): c is number => c != null),
+    );
+    const score = (p: StorefrontProduct) =>
+      (p.categoryId != null && cats.has(p.categoryId) ? 4 : 0) +
+      (p.isFeatured ? 2 : 0) +
+      (p.salesRank != null ? 1 : 0);
+    return products
+      .filter((p) => !inCart.has(p.id) && p.stock > 0)
+      .sort((a, b) => score(b) - score(a))
+      .slice(0, 4);
+  }, [cart, inCart, products, productById]);
 
   const recentProducts = recent
     .map((id) => productById.get(id))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
+  const showSections = filter === "all" && !query.trim();
+
   return (
     <>
-      {/* ツールバー */}
-      <div className="mb-5 space-y-3">
-        <div className="flex gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="商品を検索"
-            className="flex-1"
+      {/* スタッフのおすすめ */}
+      {showSections && featured.length > 0 && (
+        <section className="mb-10">
+          <SectionHeading
+            icon={<SparkleIcon size={16} />}
+            eyebrow="Staff Picks"
+            title="スタッフのおすすめ"
+            lead="施術者が実際に使っている・患者さまに勧めているアイテムです。"
           />
-          <Select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="w-36 shrink-0"
-          >
-            <option value="recommended">おすすめ順</option>
-            <option value="new">新着順</option>
-            <option value="price-asc">価格が安い順</option>
-            <option value="price-desc">価格が高い順</option>
-          </Select>
-        </div>
-        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-          <CatChip
-            active={activeCat === "all"}
-            onClick={() => setActiveCat("all")}
-            label="すべて"
-          />
-          {wishlist.length > 0 && (
-            <CatChip
-              active={activeCat === "wish"}
-              onClick={() => setActiveCat("wish")}
-              label={`♥ お気に入り (${wishlist.length})`}
-            />
-          )}
-          {categories.map((c) => (
-            <CatChip
-              key={c.id}
-              active={activeCat === c.id}
-              onClick={() => setActiveCat(c.id)}
-              label={c.name}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* 商品グリッド */}
-      {filtered.length === 0 ? (
-        <p className="rounded-xl border border-line bg-surface px-4 py-12 text-center text-sm text-muted">
-          {activeCat === "wish"
-            ? "お気に入りに登録した商品がありません。♡ をタップして追加できます。"
-            : "商品が見つかりません。"}
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-          {filtered.map((p) => (
-            <ProductCard
-              key={p.id}
-              product={p}
-              slug={slug}
-              wished={wishSet.has(p.id)}
-              onAdd={add}
-              onToggleWish={toggleWish}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* 最近見た商品 */}
-      {recentProducts.length > 0 && activeCat === "all" && !query && (
-        <section className="mt-10">
-          <h2 className="mb-3 text-sm font-semibold text-ink">最近見た商品</h2>
-          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
-            {recentProducts.map((p) => (
-              <a
+          <div className="grid gap-3 sm:grid-cols-3">
+            {featured.map((p) => (
+              <FeaturedCard
                 key={p.id}
-                href={`/shop/${slug}/item/${p.id}`}
-                className="w-28 shrink-0"
-              >
-                <div className="aspect-square overflow-hidden rounded-xl border border-line bg-elevated">
-                  {firstImage(p.imageUrls) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={firstImage(p.imageUrls)}
-                      alt={p.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : null}
-                </div>
-                <div className="mt-1 line-clamp-2 text-xs text-muted">{p.name}</div>
-                <div className="text-xs font-semibold tabular-nums text-ink">
-                  {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
-                </div>
-              </a>
+                product={p}
+                slug={slug}
+                onAdd={add}
+              />
             ))}
           </div>
         </section>
       )}
 
+      {/* 人気ランキング */}
+      {showSections && ranked.length > 0 && (
+        <section className="mb-10">
+          <SectionHeading
+            icon={<TrophyIcon size={16} />}
+            eyebrow="Ranking"
+            title="人気ランキング"
+            lead="直近3ヶ月でよく選ばれている商品。"
+          />
+          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+            {ranked.map((p) => (
+              <RankedCard key={p.id} product={p} slug={slug} onAdd={add} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 商品一覧 */}
+      <section id="products" className="scroll-mt-20">
+        <SectionHeading
+          eyebrow="Products"
+          title="商品一覧"
+          lead={`${products.length}点の商品`}
+        />
+
+        <div className="mb-4 space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <SearchIcon
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint"
+              />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="商品名・キーワードで検索"
+                aria-label="商品を検索"
+                className="pl-9"
+              />
+            </div>
+            <Select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              aria-label="並び替え"
+              className="w-36 shrink-0"
+            >
+              <option value="recommended">おすすめ順</option>
+              <option value="popular">人気順</option>
+              <option value="new">新着順</option>
+              <option value="price-asc">価格が安い順</option>
+              <option value="price-desc">価格が高い順</option>
+            </Select>
+          </div>
+          <div className="no-scrollbar -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+            <Chip
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+              label="すべて"
+            />
+            {wishlist.length > 0 && (
+              <Chip
+                active={filter === "wish"}
+                onClick={() => setFilter("wish")}
+                label={`♥ お気に入り (${wishlist.length})`}
+              />
+            )}
+            {saleCount > 0 && (
+              <Chip
+                active={filter === "sale"}
+                onClick={() => setFilter("sale")}
+                label={`セール (${saleCount})`}
+                tone="danger"
+              />
+            )}
+            {categories.map((c) => (
+              <Chip
+                key={c.id}
+                active={filter === c.id}
+                onClick={() => setFilter(c.id)}
+                label={`${c.name}${categoryCounts.has(c.id) ? ` (${categoryCounts.get(c.id)})` : ""}`}
+              />
+            ))}
+            <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap pl-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={inStockOnly}
+                onChange={(e) => setInStockOnly(e.target.checked)}
+                className="h-3.5 w-3.5 accent-accent"
+              />
+              在庫ありのみ
+            </label>
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="rounded-2xl border border-line bg-surface px-4 py-14 text-center">
+            <p className="text-sm text-muted">
+              {filter === "wish"
+                ? "お気に入りに登録した商品がありません。♡ をタップして追加できます。"
+                : "条件に合う商品が見つかりませんでした。"}
+            </p>
+            {(query || filter !== "all" || inStockOnly) && (
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                  setInStockOnly(false);
+                }}
+                className="mt-3 text-xs text-accent hover:underline"
+              >
+                条件をクリア
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+            {filtered.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                slug={slug}
+                wished={wishSet.has(p.id)}
+                pointRatePercent={shop.pointRatePercent}
+                onAdd={add}
+                onToggleWish={toggleWish}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 最近見た商品 */}
+      {showSections && recentProducts.length > 0 && (
+        <section className="mt-12">
+          <SectionHeading
+            icon={<ClockIcon size={16} />}
+            eyebrow="Recently Viewed"
+            title="最近見た商品"
+          />
+          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+            {recentProducts.map((p) => {
+              const img = parseImageUrls(p.imageUrls)[0];
+              return (
+                <a
+                  key={p.id}
+                  href={`/shop/${slug}/item/${p.id}`}
+                  className="w-28 shrink-0"
+                >
+                  <div className="aspect-square overflow-hidden rounded-xl border border-line bg-elevated">
+                    {img ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img} alt={p.name} className="h-full w-full object-cover" />
+                    ) : null}
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-xs text-muted">{p.name}</div>
+                  <div className="text-xs font-semibold tabular-nums text-ink">
+                    {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* フローティング カートボタン */}
-      {cartCount > 0 && !cartOpen && !checkoutOpen && (
+      {cartCount > 0 && !cartOpen && (
         <button
           onClick={() => setCartOpen(true)}
-          className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-fg shadow-panel transition-transform hover:scale-105"
+          className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-fg shadow-panel transition-transform hover:scale-105 sm:left-auto sm:right-6 sm:translate-x-0"
+          style={{ marginBottom: "env(safe-area-inset-bottom)" }}
         >
+          <CartIcon size={18} />
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fg px-1.5 text-xs text-accent">
             {cartCount}
           </span>
@@ -299,7 +464,7 @@ export function StorefrontClient({
 
       {/* トースト */}
       {toast && (
-        <div className="fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 top-20 z-[60] flex justify-center px-4">
           <div className="animate-slide-up rounded-full bg-ink/90 px-4 py-2 text-sm text-surface shadow-panel">
             {toast}
           </div>
@@ -310,64 +475,72 @@ export function StorefrontClient({
       <CartDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}
+        slug={slug}
         lines={cartLines}
         subtotalIncl={subtotalIncl}
         subtotalExcl={subtotalExcl}
         freeShipRemaining={freeShipRemaining}
         pointRatePercent={shop.pointRatePercent}
+        suggestions={suggestions}
         onSetQty={setQty}
-        onCheckout={() => {
-          setCartOpen(false);
-          setCheckoutOpen(true);
-        }}
-      />
-
-      {/* チェックアウト */}
-      <CheckoutForm
-        open={checkoutOpen}
-        onClose={() => setCheckoutOpen(false)}
-        slug={slug}
-        shippingFee={shop.shippingFee}
-        freeShippingThreshold={shop.freeShippingThreshold}
-        subtotalIncl={subtotalIncl}
-        items={cart}
-        error={error}
-        setError={setError}
-        pending={pending}
-        onSubmit={(payload) => {
-          setError(null);
-          startTransition(async () => {
-            const res = await createCheckout(payload);
-            if (res.ok) {
-              clearCart(slug);
-              window.location.href = res.url;
-            } else {
-              setError(res.error);
-            }
-          });
-        }}
+        onAdd={add}
       />
     </>
   );
 }
 
-function CatChip({
+function SectionHeading({
+  icon,
+  eyebrow,
+  title,
+  lead,
+}: {
+  icon?: React.ReactNode;
+  eyebrow: string;
+  title: string;
+  lead?: string;
+}) {
+  return (
+    <div className="mb-4">
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.3em] text-accent">
+        {icon}
+        {eyebrow}
+      </p>
+      <h2 className="mt-1 font-display text-xl tracking-wide text-ink sm:text-2xl">
+        {title}
+      </h2>
+      {lead && <p className="mt-1 text-xs text-muted">{lead}</p>}
+    </div>
+  );
+}
+
+function Chip({
   active,
   onClick,
   label,
+  tone,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
+  tone?: "danger";
 }) {
+  const activeCls =
+    tone === "danger"
+      ? "border-danger bg-danger text-white shadow"
+      : "border-accent bg-accent text-accent-fg shadow";
+  const idleCls =
+    tone === "danger"
+      ? "border-danger/40 bg-surface text-danger hover:bg-danger/10"
+      : "border-line bg-surface text-muted hover:border-accent/40 hover:text-ink";
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={
         "shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all " +
-        (active
-          ? "border-accent bg-accent text-accent-fg shadow"
-          : "border-line bg-surface text-muted hover:border-accent/40 hover:text-ink")
+        (active ? activeCls : idleCls)
       }
     >
       {label}
@@ -375,204 +548,117 @@ function CatChip({
   );
 }
 
-function firstImage(raw: string | null): string | undefined {
-  if (!raw) return undefined;
-  try {
-    const v = JSON.parse(raw);
-    if (Array.isArray(v) && typeof v[0] === "string") return v[0];
-  } catch {
-    /* ignore */
-  }
-  return undefined;
-}
-
-function CheckoutForm({
-  open,
-  onClose,
+function FeaturedCard({
+  product: p,
   slug,
-  shippingFee,
-  freeShippingThreshold,
-  subtotalIncl,
-  items,
-  error,
-  setError,
-  pending,
-  onSubmit,
+  onAdd,
 }: {
-  open: boolean;
-  onClose: () => void;
+  product: StorefrontProduct;
   slug: string;
-  shippingFee: number;
-  freeShippingThreshold: number;
-  subtotalIncl: number;
-  items: CartEntry[];
-  error: string | null;
-  setError: (s: string | null) => void;
-  pending: boolean;
-  onSubmit: (payload: {
-    slug: string;
-    items: CartEntry[];
-    buyerName: string;
-    buyerPhone: string | null;
-    buyerEmail: string | null;
-    buyerCode: string | null;
-    fulfillment: "pickup" | "shipping";
-    shippingAddress: string | null;
-    note: string | null;
-  }) => void;
+  onAdd: (id: number) => boolean;
 }) {
-  const [form, setForm] = useState({
-    buyerName: "",
-    buyerPhone: "",
-    buyerEmail: "",
-    buyerCode: "",
-    fulfillment: "pickup" as "pickup" | "shipping",
-    shippingAddress: "",
-    note: "",
-  });
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
-
-  const ship = effectiveShipping(
-    form.fulfillment === "shipping" ? shippingFee : 0,
-    subtotalIncl,
-    freeShippingThreshold,
-  );
-  const total = subtotalIncl + ship;
-
-  function submit() {
-    if (!form.buyerName.trim()) {
-      setError("お名前を入力してください");
-      return;
-    }
-    if (form.fulfillment === "shipping" && !form.shippingAddress.trim()) {
-      setError("配送先住所を入力してください");
-      return;
-    }
-    onSubmit({
-      slug,
-      items,
-      buyerName: form.buyerName.trim(),
-      buyerPhone: form.buyerPhone.trim() || null,
-      buyerEmail: form.buyerEmail.trim() || null,
-      buyerCode: form.buyerCode.trim() || null,
-      fulfillment: form.fulfillment,
-      shippingAddress: form.shippingAddress.trim() || null,
-      note: form.note.trim() || null,
-    });
-  }
-
+  const img = parseImageUrls(p.imageUrls)[0];
+  const sold = p.stock <= 0;
   return (
-    <Modal open={open} onClose={onClose} title="お客様情報の入力">
-      <div className="space-y-4">
-        <div>
-          <Label>お名前（必須）</Label>
-          <Input
-            value={form.buyerName}
-            onChange={(e) => set("buyerName", e.target.value)}
-            placeholder="山田 太郎"
-            maxLength={80}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>電話番号</Label>
-            <Input
-              type="tel"
-              value={form.buyerPhone}
-              onChange={(e) => set("buyerPhone", e.target.value)}
-              placeholder="090-0000-0000"
-              maxLength={40}
-            />
-          </div>
-          <div>
-            <Label>メール</Label>
-            <Input
-              type="email"
-              value={form.buyerEmail}
-              onChange={(e) => set("buyerEmail", e.target.value)}
-              placeholder="taro@example.com"
-              maxLength={120}
-            />
-          </div>
-        </div>
-        <div>
-          <Label>会員番号（お持ちの方）</Label>
-          <Input
-            value={form.buyerCode}
-            onChange={(e) => set("buyerCode", e.target.value)}
-            placeholder="診察券・会員番号でポイントが貯まります"
-            maxLength={60}
-          />
-        </div>
-        <div>
-          <Label>受け取り方法</Label>
-          <Select
-            value={form.fulfillment}
-            onChange={(e) =>
-              set("fulfillment", e.target.value as "pickup" | "shipping")
-            }
-          >
-            <option value="pickup">店頭で受け取る（送料無料）</option>
-            <option value="shipping">
-              {freeShippingThreshold > 0 && subtotalIncl >= freeShippingThreshold
-                ? "配送（送料無料）"
-                : `配送（送料 ${formatYen(shippingFee)}）`}
-            </option>
-          </Select>
-        </div>
-        {form.fulfillment === "shipping" && (
-          <div className="animate-slide-up">
-            <Label>配送先住所</Label>
-            <Textarea
-              value={form.shippingAddress}
-              onChange={(e) => set("shippingAddress", e.target.value)}
-              placeholder="〒000-0000 東京都…"
-              maxLength={300}
-            />
-          </div>
-        )}
-        <div>
-          <Label>備考</Label>
-          <Textarea
-            value={form.note}
-            onChange={(e) => set("note", e.target.value)}
-            placeholder="ご要望があればご記入ください"
-            maxLength={500}
-            className="min-h-[60px]"
-          />
-        </div>
-
-        <div className="space-y-1 rounded-xl border border-line bg-base/60 p-3 text-sm">
-          <div className="flex justify-between text-muted">
-            <span>小計（税込）</span>
-            <span className="tabular-nums">{formatYen(subtotalIncl)}</span>
-          </div>
-          <div className="flex justify-between text-muted">
-            <span>送料</span>
-            <span className="tabular-nums">
-              {ship > 0 ? formatYen(ship) : "無料"}
-            </span>
-          </div>
-          <div className="flex justify-between border-t border-line pt-1 font-semibold text-ink">
-            <span>お支払い合計</span>
-            <span className="tabular-nums">{formatYen(total)}</span>
-          </div>
-        </div>
-
-        {error && (
-          <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-            {error}
+    <article className="flex gap-3 rounded-2xl border border-accent/30 bg-surface p-3 shadow-panel">
+      <a
+        href={`/shop/${slug}/item/${p.id}`}
+        className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-elevated sm:h-28 sm:w-28"
+      >
+        {img ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={img} alt={p.name} className="h-full w-full object-cover" />
+        ) : null}
+      </a>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <a
+          href={`/shop/${slug}/item/${p.id}`}
+          className="line-clamp-2 text-sm font-semibold leading-snug text-ink hover:text-accent"
+        >
+          {p.name}
+        </a>
+        {p.featuredComment && (
+          <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-muted">
+            “{p.featuredComment}”
           </p>
         )}
-
-        <Button className="w-full" onClick={submit} disabled={pending}>
-          {pending ? "決済ページへ移動中…" : "決済へ進む（Stripe）"}
-        </Button>
-        <p className="text-center text-xs text-faint">
-          「決済へ進む」を押すと、安全な Stripe の決済ページへ移動します。
-        </p>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-1.5">
+          <PriceTag
+            size="sm"
+            price={p.price}
+            compareAtPrice={p.compareAtPrice}
+            taxRate={p.taxRate}
+          />
+          <button
+            type="button"
+            disabled={sold}
+            onClick={() => onAdd(p.id)}
+            className="h-8 shrink-0 rounded-lg bg-accent px-3 text-[11px] font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-50"
+          >
+            {sold ? "売り切れ" : "カートへ"}
+          </button>
+        </div>
       </div>
-    </Modal>
+    </article>
+  );
+}
+
+function RankedCard({
+  product: p,
+  slug,
+  onAdd,
+}: {
+  product: StorefrontProduct;
+  slug: string;
+  onAdd: (id: number) => boolean;
+}) {
+  const img = parseImageUrls(p.imageUrls)[0];
+  const sold = p.stock <= 0;
+  const rankCls =
+    p.salesRank === 1
+      ? "bg-accent text-accent-fg"
+      : p.salesRank === 2
+        ? "bg-ink text-surface"
+        : "bg-elevated text-ink";
+  return (
+    <article className="relative w-40 shrink-0 overflow-hidden rounded-2xl border border-line bg-surface shadow-panel sm:w-44">
+      <span
+        className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow ${rankCls}`}
+      >
+        {p.salesRank}
+      </span>
+      <a
+        href={`/shop/${slug}/item/${p.id}`}
+        className="block aspect-square overflow-hidden bg-elevated"
+      >
+        {img ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={img} alt={p.name} className="h-full w-full object-cover" />
+        ) : null}
+      </a>
+      <div className="p-2.5">
+        <a
+          href={`/shop/${slug}/item/${p.id}`}
+          className="line-clamp-2 text-xs font-medium leading-snug text-ink hover:text-accent"
+        >
+          {p.name}
+        </a>
+        <PriceTag
+          size="sm"
+          className="mt-1"
+          price={p.price}
+          compareAtPrice={p.compareAtPrice}
+          taxRate={p.taxRate}
+        />
+        <button
+          type="button"
+          disabled={sold}
+          onClick={() => onAdd(p.id)}
+          className="mt-2 h-8 w-full rounded-lg border border-accent/40 bg-accent-soft text-[11px] font-semibold text-accent-fg transition-colors hover:bg-accent disabled:opacity-50"
+        >
+          {sold ? "売り切れ" : "カートに入れる"}
+        </button>
+      </div>
+    </article>
   );
 }

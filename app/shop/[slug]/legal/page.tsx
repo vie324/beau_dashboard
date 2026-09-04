@@ -1,5 +1,6 @@
 import { getStorefront } from "@/feature/storefront/services/getStorefront";
 import { StoreUnavailable } from "@/feature/storefront/components/StoreUnavailable";
+import { StoreShell } from "@/feature/storefront/components/StoreShell";
 import { parseLegalInfo } from "@/helper/utils/retail";
 
 export const dynamic = "force-dynamic";
@@ -40,37 +41,27 @@ export default async function LegalPage({
   ].filter((r) => r.value.trim() !== "");
 
   return (
-    <main className="min-h-screen bg-base px-4 py-10">
-      <div className="mx-auto max-w-2xl">
-        <a
-          href={`/shop/${slug}`}
-          className="mb-4 inline-block text-sm text-muted hover:text-accent"
-        >
-          ← ストアに戻る
-        </a>
-        <h1 className="mb-1 font-display text-2xl tracking-wide text-ink">
-          特定商取引法に基づく表記
-        </h1>
-        <p className="mb-6 text-sm text-muted">{shop.name}</p>
+    <StoreShell slug={slug} shop={shop} width="narrow">
+      <h1 className="mb-1 font-display text-2xl tracking-wide text-ink">
+        特定商取引法に基づく表記
+      </h1>
+      <p className="mb-6 text-sm text-muted">{shop.name}</p>
 
-        <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
-          <dl className="divide-y divide-line/70">
-            {rows.map((r) => (
-              <div
-                key={r.label}
-                className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4"
-              >
-                <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wider text-muted">
-                  {r.label}
-                </dt>
-                <dd className="whitespace-pre-wrap text-sm text-ink">
-                  {r.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+      <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-panel">
+        <dl className="divide-y divide-line/70">
+          {rows.map((r) => (
+            <div
+              key={r.label}
+              className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4"
+            >
+              <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wider text-muted">
+                {r.label}
+              </dt>
+              <dd className="whitespace-pre-wrap text-sm text-ink">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
-    </main>
+    </StoreShell>
   );
 }

@@ -20,6 +20,8 @@ export async function getOrders(shopId: number, limit = 200) {
       subtotal: true,
       taxTotal: true,
       shippingFee: true,
+      couponCode: true,
+      discountAmount: true,
       pointsUsed: true,
       pointsEarned: true,
       total: true,

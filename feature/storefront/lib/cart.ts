@@ -2,11 +2,25 @@
 
 // 公開ページのカートは localStorage に保存する（slug 単位）。
 // 価格・在庫はサーバ側を正とするため、ここでは productId と数量のみ保持する。
+// 変更時は CART_CHANGE_EVENT を発火し、ヘッダーのカート件数などが同期できるようにする。
 
 export type CartEntry = { productId: number; qty: number };
 
+export const CART_CHANGE_EVENT = "beau:cart-change";
+/** ヘッダー等から「カートを開いて」と依頼するイベント。リスナーが preventDefault
+ *  すれば処理済み（ドロワーを開いた）とみなし、未処理ならトップページへ遷移する。 */
+export const OPEN_CART_EVENT = "beau:open-cart";
+
 function key(slug: string): string {
   return `beau_cart_${slug}`;
+}
+
+function notify(): void {
+  try {
+    window.dispatchEvent(new Event(CART_CHANGE_EVENT));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function readCart(slug: string): CartEntry[] {
@@ -37,6 +51,7 @@ export function writeCart(slug: string, entries: CartEntry[]): void {
   } catch {
     /* ignore quota errors */
   }
+  notify();
 }
 
 export function addToCart(slug: string, productId: number, qty = 1): void {
@@ -50,4 +65,10 @@ export function addToCart(slug: string, productId: number, qty = 1): void {
 export function clearCart(slug: string): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(key(slug));
+  notify();
+}
+
+/** カート内の総数量。 */
+export function cartCount(slug: string): number {
+  return readCart(slug).reduce((s, e) => s + e.qty, 0);
 }
