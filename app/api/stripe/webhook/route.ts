@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { getStripe } from "@/helper/lib/stripe";
 import {
   finalizeOrderPaid,
-  releaseOrderStock,
+  releaseOrderReservation,
   refundOrderByPaymentIntent,
 } from "@/feature/order/lib/finalizeOrder";
 
@@ -69,8 +69,8 @@ export async function POST(req: NextRequest) {
       case "checkout.session.async_payment_failed": {
         const session = event.data.object as Stripe.Checkout.Session;
         const orderId = orderIdFromSession(session);
-        // 未決済のまま失効/失敗 → 予約在庫を解放
-        if (orderId) await releaseOrderStock(orderId, "cancelled");
+        // 未決済のまま失効/失敗 → 予約（在庫・利用ポイント・クーポン回数）を解放
+        if (orderId) await releaseOrderReservation(orderId, "cancelled");
         break;
       }
       case "charge.refunded": {

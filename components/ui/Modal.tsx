@@ -3,6 +3,12 @@
 import * as React from "react";
 import { cn } from "@/helper/utils/cn";
 
+const SIZE: Record<"md" | "lg" | "xl", string> = {
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+};
+
 export function Modal({
   open,
   onClose,
@@ -10,6 +16,7 @@ export function Modal({
   children,
   footer,
   className,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +26,9 @@ export function Modal({
       スマホで縦長フォームでも一番下までスクロールせずにボタンを押せる。 */
   footer?: React.ReactNode;
   className?: string;
+  /** 横幅。一覧や台帳を出すモーダルは lg。className で max-w を上書きしても
+      CSS の出力順で負けることがあるため、幅はこの prop で指定する。 */
+  size?: "md" | "lg" | "xl";
 }) {
   React.useEffect(() => {
     if (!open) return;
@@ -44,7 +54,8 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 my-6 w-full max-w-lg animate-fade-in rounded-xl border border-line bg-surface shadow-panel",
+          "relative z-10 my-6 w-full animate-fade-in rounded-xl border border-line bg-surface shadow-panel",
+          SIZE[size],
           className,
         )}
       >

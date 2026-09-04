@@ -32,6 +32,7 @@ export async function saveProduct(
   const raw = Object.fromEntries(formData.entries());
   // チェックボックスは存在しなければ false 扱い
   raw.isPublic = formData.get("isPublic") ? "true" : "false";
+  raw.isFeatured = formData.get("isFeatured") ? "true" : "false";
   for (const k of Object.keys(raw)) {
     if (raw[k] === "") delete raw[k];
   }
@@ -51,8 +52,16 @@ export async function saveProduct(
     categoryId: input.categoryId ?? null,
     description: input.description ?? null,
     price: input.price,
+    // 0 または未入力は「通常価格なし」。販売価格以下なら意味が無いので null に落とす。
+    compareAtPrice:
+      input.compareAtPrice && input.compareAtPrice > input.price
+        ? input.compareAtPrice
+        : null,
     cost: input.cost ?? 0,
     taxRate: input.taxRate ?? 10,
+    tagline: input.tagline ?? null,
+    isFeatured: input.isFeatured ?? false,
+    featuredComment: input.featuredComment ?? null,
     imageUrls: imageTextToJson(input.imageUrlsText),
     isPublic: input.isPublic ?? true,
   };
@@ -270,6 +279,7 @@ export async function saveStorefrontSettings(
   if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
   const raw = Object.fromEntries(formData.entries());
   raw.storeActive = formData.get("storeActive") ? "true" : "false";
+  raw.allowPointRedeem = formData.get("allowPointRedeem") ? "true" : "false";
   for (const k of Object.keys(raw)) if (raw[k] === "") delete raw[k];
   const parsed = storefrontSettingsSchema.safeParse(raw);
   if (!parsed.success) {
@@ -306,6 +316,9 @@ export async function saveStorefrontSettings(
         shippingFee: input.shippingFee ?? 0,
         freeShippingThreshold: input.freeShippingThreshold ?? 0,
         pointRatePercent: input.pointRatePercent ?? 0,
+        allowPointRedeem: input.allowPointRedeem ?? true,
+        storeAnnouncement: input.storeAnnouncement ?? null,
+        storeHeroImageUrl: input.storeHeroImageUrl ?? null,
       },
     });
   } catch (e) {

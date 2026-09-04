@@ -78,6 +78,12 @@ model Shop {
   pointRatePercent  Int       @default(0)
   // 特定商取引法に基づく表記（JSON TEXT）。販売事業者名・所在地・連絡先・返品条件 等。
   legalInfo         String?
+  // 購入時のポイント利用（1pt=1円の値引き）を公開ページで許可するか。
+  allowPointRedeem  Boolean   @default(true)
+  // 販売ページ上部のお知らせ（キャンペーン・発送休止の案内 等）。空なら非表示。
+  storeAnnouncement String?
+  // 販売ページのヒーロー画像URL（任意）。
+  storeHeroImageUrl String?
   createdAt         DateTime  @default(now())
   deletedAt         DateTime?
   brand             Brand     @relation(fields: [brandId], references: [id])
@@ -94,6 +100,7 @@ model Shop {
   orders            Order[]
   pointTransactions PointTransaction[]
   productReviews    ProductReview[]
+  coupons           Coupon[]
 }
 
 // 設備（楽トレ・水素吸引機 等）。スタッフの代わりにメニューの「リソース」として
@@ -346,6 +353,14 @@ model Product {
   cost        Int       @default(0)
   // 税率(%)。軽減税率対象は 8、標準は 10。
   taxRate     Int       @default(10)
+  // 通常価格（税抜）。price より高いときは「セール」として打消し線 + 割引率を表示。
+  compareAtPrice Int?
+  // 一覧カードに出す短いキャッチコピー（例: 院長監修 / 就寝時の首をサポート）。
+  tagline     String?
+  // スタッフのおすすめ。公開ページ上部の「おすすめ」枠に掲載する。
+  isFeatured  Boolean   @default(false)
+  // おすすめコメント（施術者からの一言）。isFeatured のとき表示。
+  featuredComment String?
   // JSON(TEXT): 画像URLの配列 ["https://..."]
   imageUrls   String?
   isPublic    Boolean   @default(true)
@@ -434,11 +449,14 @@ model Order {
   subtotal        Int       @default(0) // 税抜小計
   taxTotal        Int       @default(0)
   shippingFee     Int       @default(0)
-  // ポイント利用（値引き）。現状の公開チェックアウトでは未使用（常に0）。
-  // 将来ポイント充当を実装する際に total から差し引く。
+  // ポイント利用（1pt=1円の値引き）。チェックアウト時に顧客残高から引き当てる。
   pointsUsed      Int       @default(0)
   pointsEarned    Int       @default(0)
-  total           Int       @default(0) // 請求総額（税込商品合計 + 送料 - pointsUsed）
+  // クーポン値引き（税込商品合計から差し引く）。couponCode は注文時点のスナップショット。
+  couponId        Int?
+  couponCode      String?
+  discountAmount  Int       @default(0)
+  total           Int       @default(0) // 請求総額（税込商品合計 - クーポン値引き + 送料 - pointsUsed）
   note            String?
   stripeSessionId String?   @unique
   stripePaymentId String?
@@ -448,6 +466,7 @@ model Order {
   deletedAt       DateTime?
   shop              Shop               @relation(fields: [shopId], references: [id])
   customer          Customer?          @relation(fields: [customerId], references: [id])
+  coupon            Coupon?            @relation(fields: [couponId], references: [id])
   items             OrderItem[]
   pointTransactions PointTransaction[]
 
@@ -484,4 +503,37 @@ model PointTransaction {
   order      Order?    @relation(fields: [orderId], references: [id])
 
   @@index([shopId, customerId])
+}
+
+// クーポン（店舗スコープ）。公開ページのチェックアウトでコードを入力すると値引き。
+// 店頭で配布する「来院者限定コード」や、販売ページに掲示する「初回10%OFF」等に使う。
+model Coupon {
+  id          Int       @id @default(autoincrement())
+  shopId      Int
+  // 入力コード。大文字に正規化して保存。店舗内で一意。
+  code        String
+  name        String
+  // percent（%値引き）/ fixed（円引き）
+  type        String    @default("percent")
+  value       Int       @default(0)
+  // 利用条件: 税込商品合計がこの金額以上（0 で無条件）
+  minSubtotal Int       @default(0)
+  // percent のときの値引き上限（円）。0 で上限なし
+  maxDiscount Int       @default(0)
+  startsAt    DateTime?
+  expiresAt   DateTime?
+  // 総利用回数の上限。null で無制限。usedCount は注文作成時に加算、失効/取消で減算。
+  usageLimit  Int?
+  usedCount   Int       @default(0)
+  isActive    Boolean   @default(true)
+  // 販売ページにバナー表示する（お客様がコードを見つけられる）
+  showOnStore Boolean   @default(false)
+  note        String?
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  shop        Shop      @relation(fields: [shopId], references: [id])
+  orders      Order[]
+
+  @@unique([shopId, code])
+  @@index([shopId])
 }

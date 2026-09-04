@@ -37,6 +37,7 @@ async function main() {
   await db.pointTransaction.deleteMany();
   await db.orderItem.deleteMany();
   await db.order.deleteMany();
+  await db.coupon.deleteMany();
   await db.productReview.deleteMany();
   await db.stockMovement.deleteMany();
   await db.inventoryItem.deleteMany();
@@ -75,6 +76,9 @@ async function main() {
       shippingFee: 600,
       freeShippingThreshold: 5000,
       pointRatePercent: 5,
+      allowPointRedeem: true,
+      storeAnnouncement:
+        "9月は「腰用サポーター」「温熱インソール」がセール価格。会員確認でポイントがご利用いただけます。",
       legalInfo: JSON.stringify({
         sellerName: "Beau 銀座本店",
         manager: "佐藤 美咲",
@@ -211,12 +215,31 @@ async function main() {
     }),
   ]);
 
-  // Customers
+  // Customers（code = 患者番号。販売ページの会員確認は code/メール + 電話番号で行う）
   const customers = await Promise.all(
     [
-      { name: "高橋 麻衣", kana: "タカハシ マイ", phone: "090-1111-2222" },
-      { name: "渡辺 翔", kana: "ワタナベ ショウ", phone: "090-3333-4444" },
-      { name: "伊藤 さくら", kana: "イトウ サクラ", phone: "090-5555-6666" },
+      {
+        code: "1001",
+        name: "高橋 麻衣",
+        kana: "タカハシ マイ",
+        phone: "090-1111-2222",
+        email: "mai@example.com",
+        postalCode: "104-0061",
+        address: "東京都中央区銀座2-2-2 ビュービル301",
+      },
+      {
+        code: "1002",
+        name: "渡辺 翔",
+        kana: "ワタナベ ショウ",
+        phone: "090-3333-4444",
+      },
+      {
+        code: "1003",
+        name: "伊藤 さくら",
+        kana: "イトウ サクラ",
+        phone: "090-5555-6666",
+        email: "sakura@example.com",
+      },
     ].map((c) => db.customer.create({ data: { ...c, shopId: ginza.id } })),
   );
 
@@ -316,15 +339,25 @@ async function main() {
     description: string;
     stock: number;
     safety: number;
+    tagline?: string;
+    compareAtPrice?: number;
+    isFeatured?: boolean;
+    featuredComment?: string;
   }[] = [
     {
       name: "腰用サポーター（M）",
       sku: "SP-WAIST-M",
       categoryId: pcSupport.id,
       price: 3200,
+      compareAtPrice: 3800,
       cost: 1400,
       taxRate: 10,
-      description: "通気性の高いメッシュ素材。腰部をしっかり固定し、日常動作をサポートします。",
+      tagline: "デスクワークの腰をしっかりサポート",
+      description:
+        "通気性の高いメッシュ素材。腰部をしっかり固定し、日常動作をサポートします。\n\n・素材：ナイロン、ポリウレタン\n・サイズ：M（ウエスト 70〜85cm）\n・洗濯：手洗い可",
+      isFeatured: true,
+      featuredComment:
+        "施術後のケアに一番おすすめしているサポーターです。通気性が良く、夏場でも蒸れにくいのがポイント。",
       stock: 24,
       safety: 5,
     },
@@ -335,6 +368,7 @@ async function main() {
       price: 2800,
       cost: 1200,
       taxRate: 10,
+      tagline: "薄手で目立ちにくい",
       description: "薄手で目立ちにくく、立ち仕事やスポーツ時の膝の負担を軽減します。",
       stock: 18,
       safety: 5,
@@ -346,7 +380,11 @@ async function main() {
       price: 6800,
       cost: 3000,
       taxRate: 10,
+      tagline: "整体院監修・高さ調整シート付き",
       description: "首・肩の負担を考えて設計した整体院監修の枕。高さ調整シート付き。",
+      isFeatured: true,
+      featuredComment:
+        "首の角度が合わない枕は肩こりの原因になります。ご自宅で高さを調整できるので、まずはこちらから。",
       stock: 8,
       safety: 3,
     },
@@ -357,6 +395,7 @@ async function main() {
       price: 2400,
       cost: 900,
       taxRate: 10,
+      tagline: "お風呂上がりの筋膜リリースに",
       description: "セルフ筋膜リリースに。お風呂上がりのケアにおすすめです。",
       stock: 3,
       safety: 5,
@@ -366,8 +405,10 @@ async function main() {
       sku: "CR-INSOLE",
       categoryId: pcCare.id,
       price: 1800,
+      compareAtPrice: 2200,
       cost: 700,
       taxRate: 10,
+      tagline: "冷え・むくみが気になる方に",
       description: "足裏アーチを支え、冷えやむくみが気になる方に。",
       stock: 30,
       safety: 8,
@@ -379,6 +420,7 @@ async function main() {
       price: 3600,
       cost: 1500,
       taxRate: 8,
+      tagline: "約30日分・毎日の歩行をサポート",
       description: "毎日の歩行をサポートする栄養補助食品。約30日分。",
       stock: 40,
       safety: 10,
@@ -396,6 +438,10 @@ async function main() {
         price: p.price,
         cost: p.cost,
         taxRate: p.taxRate,
+        compareAtPrice: p.compareAtPrice ?? null,
+        tagline: p.tagline ?? null,
+        isFeatured: p.isFeatured ?? false,
+        featuredComment: p.featuredComment ?? null,
         description: p.description,
         isPublic: true,
         inventory: {
@@ -435,9 +481,56 @@ async function main() {
     });
   }
 
+  // ---- 物販: クーポン（銀座本店）----
+  await db.coupon.createMany({
+    data: [
+      {
+        shopId: ginza.id,
+        code: "WELCOME10",
+        name: "はじめてのお買い物 10%OFF",
+        type: "percent",
+        value: 10,
+        minSubtotal: 3000,
+        maxDiscount: 2000,
+        isActive: true,
+        showOnStore: true,
+        note: "販売ページに掲示。3,000円以上で10%OFF（上限2,000円）",
+      },
+      {
+        shopId: ginza.id,
+        code: "VISIT500",
+        name: "ご来院者限定 500円引き",
+        type: "fixed",
+        value: 500,
+        minSubtotal: 2000,
+        usageLimit: 100,
+        isActive: true,
+        showOnStore: false,
+        note: "受付でお渡しするカードに記載",
+      },
+    ],
+  });
+
+  // ---- 物販: ポイント（来院ポイントの手動付与サンプル）----
+  const mai = customers[0];
+  await db.pointTransaction.create({
+    data: {
+      shopId: ginza.id,
+      customerId: mai.id,
+      type: "adjust",
+      points: 800,
+      reason: "来院ポイント（9月）",
+    },
+  });
+  await db.customer.update({
+    where: { id: mai.id },
+    data: { pointsBalance: 800 },
+  });
+
   console.log("Seed complete.");
   console.log("Login: admin@beau.test / beau1234");
   console.log("Storefront: /shop/beau-ginza");
+  console.log("Member demo: 会員番号 1001 / 電話 090-1111-2222（800pt）");
 }
 
 main()

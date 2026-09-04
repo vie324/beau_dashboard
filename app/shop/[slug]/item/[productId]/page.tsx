@@ -3,7 +3,9 @@ import { getStorefrontProduct } from "@/feature/storefront/services/getStorefron
 import { ProductDetailClient } from "@/feature/storefront/components/ProductDetailClient";
 import { ReviewSection } from "@/feature/storefront/components/ReviewSection";
 import { StoreUnavailable } from "@/feature/storefront/components/StoreUnavailable";
+import { StoreShell } from "@/feature/storefront/components/StoreShell";
 import { StarRating } from "@/feature/storefront/components/StarRating";
+import { PriceTag } from "@/feature/storefront/components/PriceTag";
 import { formatYen, taxInclusiveUnit, parseImageUrls } from "@/helper/utils/retail";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +23,7 @@ export async function generateMetadata({
   const { product } = data;
   const img = parseImageUrls(product.imageUrls)[0];
   const description =
+    product.tagline ||
     product.description?.slice(0, 120) ||
     `${product.name} を販売中。${formatYen(taxInclusiveUnit(product.price, product.taxRate))}（税込）`;
   return {
@@ -47,20 +50,31 @@ export default async function StorefrontItemPage({
   const data = await getStorefrontProduct(slug, id);
   if (!data) return <StoreUnavailable />;
 
-  const { shop, product, reviews, related } = data;
+  const { shop, product, categoryName, reviews, related } = data;
 
   return (
-    <main className="min-h-screen bg-base px-4 py-8">
-      <div className="mx-auto max-w-2xl">
-        <a
-          href={`/shop/${slug}`}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-accent"
-        >
-          ← {shop.storeTitle || shop.name} に戻る
-        </a>
+    <StoreShell slug={slug} shop={shop}>
+      <nav aria-label="パンくず" className="mb-4 text-xs text-muted">
+        <ol className="flex flex-wrap items-center gap-1">
+          <li>
+            <a href={`/shop/${slug}`} className="hover:text-accent">
+              ストアトップ
+            </a>
+          </li>
+          {categoryName && (
+            <>
+              <li aria-hidden>›</li>
+              <li>{categoryName}</li>
+            </>
+          )}
+          <li aria-hidden>›</li>
+          <li className="truncate text-ink">{product.name}</li>
+        </ol>
+      </nav>
 
-        <ProductDetailClient slug={slug} product={product} />
+      <ProductDetailClient slug={slug} product={product} shop={shop} />
 
+      <div id="reviews" className="scroll-mt-20">
         <ReviewSection
           slug={slug}
           productId={product.id}
@@ -68,48 +82,58 @@ export default async function StorefrontItemPage({
           ratingAvg={product.ratingAvg}
           ratingCount={product.ratingCount}
         />
-
-        {related.length > 0 && (
-          <section className="mt-8">
-            <h2 className="mb-3 text-base font-semibold text-ink">
-              こちらもおすすめ
-            </h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {related.map((p) => {
-                const img = parseImageUrls(p.imageUrls)[0];
-                return (
-                  <a
-                    key={p.id}
-                    href={`/shop/${slug}/item/${p.id}`}
-                    className="group overflow-hidden rounded-xl border border-line bg-surface shadow-panel transition-all hover:-translate-y-0.5 hover:border-accent/40"
-                  >
-                    <div className="aspect-square overflow-hidden bg-elevated">
-                      {img ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={img}
-                          alt={p.name}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                      ) : null}
-                    </div>
-                    <div className="p-2">
-                      <div className="line-clamp-2 text-xs text-ink">{p.name}</div>
-                      {p.ratingCount > 0 && (
-                        <StarRating value={p.ratingAvg} size={11} className="mt-0.5" />
-                      )}
-                      <div className="mt-0.5 text-xs font-semibold tabular-nums text-ink">
-                        {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
-                      </div>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          </section>
-        )}
       </div>
-    </main>
+
+      {related.length > 0 && (
+        <section className="mt-10">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Related</p>
+          <h2 className="mb-3 mt-1 font-display text-xl tracking-wide text-ink">
+            こちらもおすすめ
+          </h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {related.map((p) => {
+              const img = parseImageUrls(p.imageUrls)[0];
+              return (
+                <a
+                  key={p.id}
+                  href={`/shop/${slug}/item/${p.id}`}
+                  className="group overflow-hidden rounded-2xl border border-line bg-surface shadow-panel transition-all hover:-translate-y-0.5 hover:border-accent/40"
+                >
+                  <div className="relative aspect-square overflow-hidden bg-elevated">
+                    {img ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={img}
+                        alt={p.name}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : null}
+                    {p.discountPercent > 0 && (
+                      <span className="absolute left-2 top-2 rounded-full bg-danger px-2 py-0.5 text-[10px] font-bold text-white">
+                        {p.discountPercent}%OFF
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-2.5">
+                    <div className="line-clamp-2 text-xs text-ink">{p.name}</div>
+                    {p.ratingCount > 0 && (
+                      <StarRating value={p.ratingAvg} size={11} className="mt-0.5" />
+                    )}
+                    <PriceTag
+                      size="sm"
+                      className="mt-0.5"
+                      price={p.price}
+                      compareAtPrice={p.compareAtPrice}
+                      taxRate={p.taxRate}
+                    />
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </StoreShell>
   );
 }

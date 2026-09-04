@@ -190,3 +190,58 @@ CREATE TABLE IF NOT EXISTS "PointTransaction" (
   "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS "PointTransaction_shopId_customerId_idx" ON "PointTransaction"("shopId", "customerId");
+
+-- 2026-09: 物販EC強化（セール価格・おすすめ・クーポン・ポイント利用・販売ページ設定）
+-- Product にセール/おすすめ用の列、Shop に販売ページ設定の列、Order に値引き列を追加し、
+-- クーポンテーブルを新設した。未適用だと商品ページ・販売ページ・注文ページが
+-- P2022（列なし）/ P2021（テーブルなし）で失敗する。すべて冪等。
+
+-- Product: セール価格（税抜の通常価格）・キャッチコピー・おすすめ
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "compareAtPrice" INTEGER;
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "tagline" TEXT;
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "isFeatured" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "featuredComment" TEXT;
+
+-- Shop: ポイント利用の許可・お知らせ・ヒーロー画像
+ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "allowPointRedeem" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "storeAnnouncement" TEXT;
+ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "storeHeroImageUrl" TEXT;
+
+-- Coupon（クーポン）
+CREATE TABLE IF NOT EXISTS "Coupon" (
+  "id"          SERIAL PRIMARY KEY,
+  "shopId"      INTEGER NOT NULL REFERENCES "Shop"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
+  "code"        TEXT NOT NULL,
+  "name"        TEXT NOT NULL,
+  "type"        TEXT NOT NULL DEFAULT 'percent',
+  "value"       INTEGER NOT NULL DEFAULT 0,
+  "minSubtotal" INTEGER NOT NULL DEFAULT 0,
+  "maxDiscount" INTEGER NOT NULL DEFAULT 0,
+  "startsAt"    TIMESTAMP(3),
+  "expiresAt"   TIMESTAMP(3),
+  "usageLimit"  INTEGER,
+  "usedCount"   INTEGER NOT NULL DEFAULT 0,
+  "isActive"    BOOLEAN NOT NULL DEFAULT true,
+  "showOnStore" BOOLEAN NOT NULL DEFAULT false,
+  "note"        TEXT,
+  "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "deletedAt"   TIMESTAMP(3)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "Coupon_shopId_code_key" ON "Coupon"("shopId", "code");
+CREATE INDEX IF NOT EXISTS "Coupon_shopId_idx" ON "Coupon"("shopId");
+
+-- Order: クーポン値引き（pointsUsed は既存列。ポイント利用で実際に使うようになった）
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "couponId" INTEGER;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "couponCode" TEXT;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "discountAmount" INTEGER NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'Order_couponId_fkey'
+  ) THEN
+    ALTER TABLE "Order"
+      ADD CONSTRAINT "Order_couponId_fkey"
+      FOREIGN KEY ("couponId") REFERENCES "Coupon"("id")
+      ON UPDATE CASCADE ON DELETE SET NULL;
+  END IF;
+END $$;

@@ -16,7 +16,7 @@ export default async function CustomersPage() {
     <>
       <PageHeader
         title="顧客"
-        description="店舗の顧客情報（氏名・カナ・連絡先・メモ）を登録・編集します。予約モーダルから検索して指定できます。"
+        description="店舗の顧客情報（氏名・カナ・連絡先・メモ）を登録・編集します。「ポイント」から物販ポイントの台帳・購入履歴の確認と、来院ポイント等の手動付与ができます。"
       />
       <CustomersClient
         customers={customers}
