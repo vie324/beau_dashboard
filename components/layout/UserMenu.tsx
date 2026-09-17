@@ -12,7 +12,7 @@ export function UserMenu({ name }: { name: string }) {
       <button
         onClick={() => startTransition(() => logoutAction())}
         disabled={pending}
-        className="rounded-xl border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-50"
+        className="shrink-0 whitespace-nowrap rounded-xl border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-50"
       >
         ログアウト
       </button>

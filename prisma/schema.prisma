@@ -84,6 +84,12 @@ model Shop {
   storeAnnouncement String?
   // 販売ページのヒーロー画像URL（任意）。
   storeHeroImageUrl String?
+  // ---- 通知（予約が入った / キャンセルされた）----
+  // 通知メールの送信先。カンマ区切りで複数可。空ならメール送信なし（画面通知のみ）。
+  notifyEmail       String?
+  // 管理画面から手動で登録した予約も通知するか。既定 false = ネット予約のみ通知。
+  // キャンセルは操作元に関わらず常に通知する。
+  notifyManualBooking Boolean @default(false)
   createdAt         DateTime  @default(now())
   deletedAt         DateTime?
   brand             Brand     @relation(fields: [brandId], references: [id])
@@ -101,6 +107,7 @@ model Shop {
   pointTransactions PointTransaction[]
   productReviews    ProductReview[]
   coupons           Coupon[]
+  notifications     Notification[]
 }
 
 // 設備（楽トレ・水素吸引機 等）。スタッフの代わりにメニューの「リソース」として
@@ -322,6 +329,29 @@ model BookingLink {
   deletedAt             DateTime?
   brand                 Brand         @relation(fields: [brandId], references: [id])
   appointments          Appointment[]
+}
+
+// ---- 通知（お知らせベル）----
+// 予約が入った / キャンセルされたタイミングで1行作る。画面右上のベルに出す。
+// 既読は readAt で管理（soft delete はしない。古い行は自然に埋もれる）。
+model Notification {
+  id            Int       @id @default(autoincrement())
+  shopId        Int
+  // "reservation"（新規予約）/ "cancel"（キャンセル・削除）
+  type          String
+  // 通知の見出し（例: "ネット予約が入りました"）
+  title         String
+  // 本文（例: "9月17日(水) 14:00 山田 花子 様 / もみほぐし60分 / 担当 岡本"）
+  body          String
+  // 元の予約。予約が物理削除されることはないが、参照は緩く持つ（FK 無し）。
+  appointmentId Int?
+  // 予約の開始日時（一覧で「いつの予約か」を出すため）
+  startAt       DateTime?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+  shop          Shop      @relation(fields: [shopId], references: [id])
+
+  @@index([shopId, createdAt])
 }
 
 // ---- 物販（Retail / EC）— すべて店舗スコープ（shopId 必須）----

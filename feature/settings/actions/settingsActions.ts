@@ -91,6 +91,8 @@ export async function saveShop(
           breakEnd: input.breakEnd || null,
           hoursByDow: cleanHoursByDow(input.hoursByDow),
           dateOverrides: cleanDateOverrides(input.dateOverrides),
+          notifyEmail: input.notifyEmail || null,
+          notifyManualBooking: input.notifyManualBooking,
         },
       });
     } else {
@@ -108,6 +110,8 @@ export async function saveShop(
           breakEnd: input.breakEnd || null,
           hoursByDow: cleanHoursByDow(input.hoursByDow),
           dateOverrides: cleanDateOverrides(input.dateOverrides),
+          notifyEmail: input.notifyEmail || null,
+          notifyManualBooking: input.notifyManualBooking,
         },
       });
     }

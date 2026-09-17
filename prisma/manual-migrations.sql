@@ -245,3 +245,27 @@ BEGIN
       ON UPDATE CASCADE ON DELETE SET NULL;
   END IF;
 END $$;
+
+-- 2026-09: 予約・キャンセル通知（Notification / Shop.notifyEmail）
+-- 予約が入ったとき・キャンセルされたときに Notification を1行作り、画面右上の
+-- ベルに出す。Shop.notifyEmail が設定されていればメールも送る。
+-- 未適用だと通知の作成が失敗し（P2021/P2022）、ヘッダーのベルは常に空になる。
+-- 予約自体は通知の失敗では止まらないが、設定画面の店舗保存は失敗する。すべて冪等。
+
+-- Shop: 通知先メールアドレス・手動登録も通知するか
+ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "notifyEmail" TEXT;
+ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "notifyManualBooking" BOOLEAN NOT NULL DEFAULT false;
+
+-- Notification（お知らせベル）
+CREATE TABLE IF NOT EXISTS "Notification" (
+  "id"            SERIAL PRIMARY KEY,
+  "shopId"        INTEGER NOT NULL REFERENCES "Shop"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
+  "type"          TEXT NOT NULL,
+  "title"         TEXT NOT NULL,
+  "body"          TEXT NOT NULL,
+  "appointmentId" INTEGER,
+  "startAt"       TIMESTAMP(3),
+  "readAt"        TIMESTAMP(3),
+  "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "Notification_shopId_createdAt_idx" ON "Notification"("shopId", "createdAt");

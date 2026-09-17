@@ -5,13 +5,19 @@ import { db } from "@/helper/lib/db";
 import { getActiveShopId } from "@/helper/lib/shop-context";
 import { getCurrentUser } from "@/helper/lib/auth";
 import { jstDateTimeToDate, addMinutes } from "@/helper/utils/time";
-import { FREEING_STATUSES } from "@/helper/utils/status";
+import {
+  CANCEL_STATUSES,
+  FREEING_STATUSES,
+  isCancelledStatus,
+  statusMeta,
+} from "@/helper/utils/status";
 import { staffWorksOn } from "@/helper/utils/staffWork";
 import {
   appointmentSchema,
   timeBlockSchema,
   type AppointmentInput,
 } from "@/feature/reservation/schema/reservationSchema";
+import { notifyAppointment } from "@/feature/notification/lib/notify";
 
 export type ActionResult =
   | { ok: true }
@@ -181,19 +187,45 @@ async function upsert(
     cardColor: input.cardColor ?? null,
   };
 
+  // 保存が確定してから通知する。新規は「予約が入った」、編集はキャンセルに
+  // 変わったときだけ通知する（時間やメモの修正では通知しない）。
+  let notifyId: number | null = null;
+  let notifyKind: "reservation" | "cancel" = "reservation";
+  let notifyDetail: string | undefined;
+
   try {
     if (input.id) {
       const existing = await db.appointment.findFirst({
         where: { id: input.id, shopId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (!existing) return { ok: false, error: "予約が見つかりません" };
       await db.appointment.update({ where: { id: input.id }, data });
+      if (
+        !isCancelledStatus(existing.status) &&
+        CANCEL_STATUSES.includes(input.status)
+      ) {
+        notifyId = input.id;
+        notifyKind = "cancel";
+        notifyDetail = statusMeta(input.status).label;
+      }
     } else {
-      await db.appointment.create({ data: { ...data, source: "manual" } });
+      const created = await db.appointment.create({
+        data: { ...data, source: "manual" },
+        select: { id: true },
+      });
+      notifyId = created.id;
     }
   } catch {
     return { ok: false, error: "保存に失敗しました。時間をおいて再度お試しください" };
+  }
+
+  if (notifyId != null) {
+    await notifyAppointment({
+      appointmentId: notifyId,
+      kind: notifyKind,
+      detail: notifyDetail,
+    });
   }
 
   revalidatePath("/reservation");
@@ -226,7 +258,7 @@ export async function setAppointmentStatus(
   const shopId = await getActiveShopId();
   const existing = await db.appointment.findFirst({
     where: { id, shopId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!existing) return { ok: false, error: "予約が見つかりません" };
 
@@ -235,6 +267,15 @@ export async function setAppointmentStatus(
   } catch {
     return { ok: false, error: "ステータスの変更に失敗しました" };
   }
+
+  if (!isCancelledStatus(existing.status) && CANCEL_STATUSES.includes(status)) {
+    await notifyAppointment({
+      appointmentId: id,
+      kind: "cancel",
+      detail: statusMeta(status).label,
+    });
+  }
+
   revalidatePath("/reservation");
   return { ok: true };
 }
@@ -245,7 +286,7 @@ export async function deleteAppointment(id: number): Promise<ActionResult> {
   const shopId = await getActiveShopId();
   const existing = await db.appointment.findFirst({
     where: { id, shopId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!existing) return { ok: false, error: "予約が見つかりません" };
 
@@ -257,6 +298,17 @@ export async function deleteAppointment(id: number): Promise<ActionResult> {
   } catch {
     return { ok: false, error: "削除に失敗しました" };
   }
+
+  // 削除も枠が空く操作なので、キャンセルと同じ扱いで通知する。
+  // すでにキャンセル済みの予約の後片付けは通知しない。
+  if (!isCancelledStatus(existing.status)) {
+    await notifyAppointment({
+      appointmentId: id,
+      kind: "cancel",
+      detail: "予約を削除",
+    });
+  }
+
   revalidatePath("/reservation");
   return { ok: true };
 }

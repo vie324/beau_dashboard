@@ -19,6 +19,8 @@ export async function getSettingsData(brandId: number, shopId: number) {
         breakEnd: true,
         hoursByDow: true,
         dateOverrides: true,
+        notifyEmail: true,
+        notifyManualBooking: true,
       },
     }),
     db.staff.findMany({
