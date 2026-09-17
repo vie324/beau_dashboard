@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
 import { assignLanes } from "@/helper/utils/laneLayout";
+import { OffDutyTag } from "@/feature/reservation/components/OffDutyTag";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 
 const PX_PER_MIN = 2; // 縦軸の高さ（1分=2px → 1時間=120px / 15分=30px）
@@ -19,6 +20,8 @@ type Col = {
   equipmentId: number | null;
   name: string;
   color?: string;
+  /** 出勤日として登録されていない臨時スタッフ（予約が残っているため表示中）。 */
+  offDuty?: boolean;
 };
 
 function jstMinutes(d: Date): number {
@@ -308,6 +311,7 @@ export function DayCalendar({
               ) : (
                 <span className="truncate">{c.name}</span>
               )}
+              {c.offDuty && <OffDutyTag />}
             </div>
           ))}
         </div>

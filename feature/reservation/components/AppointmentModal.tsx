@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { STATUS_OPTIONS } from "@/helper/utils/status";
 import { timeSlots } from "@/helper/utils/timeOptions";
-import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
+import { addMinutes, jstDateTimeToDate, formatJpDate } from "@/helper/utils/time";
 import { filterCustomersByQuery } from "@/helper/utils/customerSort";
 import { activeMenuStaffIds } from "@/helper/utils/menuStaff";
 
@@ -27,6 +27,7 @@ import {
   getCustomerLastNote,
 } from "@/feature/reservation/actions/reservationActions";
 import { saveCardColorPreset, deleteCardColorPreset } from "@/feature/settings/actions/settingsActions";
+import { staffWorksOn } from "@/helper/utils/staffWork";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ReservationOptimisticDispatch } from "@/feature/reservation/types/optimistic";
 
@@ -192,6 +193,18 @@ export function AppointmentModal({
     menuStaffIds.length > 0 &&
     form.staffId !== "" &&
     !menuStaffIds.includes(Number(form.staffId));
+
+  // 臨時スタッフの「出勤日以外」。予約自体は止めない（当日出勤になることもある）が、
+  // 気付かずに勤務外の日へ入れてしまわないよう選択肢と本文で知らせる。
+  const offDutyStaffIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const s of formData.staffs) {
+      if (!staffWorksOn(s, form.date)) ids.add(s.id);
+    }
+    return ids;
+  }, [formData.staffs, form.date]);
+  const staffOffDuty =
+    form.staffId !== "" && offDutyStaffIds.has(Number(form.staffId));
 
   /** 楽観的更新用の ReservationRow を現在のフォーム値から組み立てる。 */
   function buildOptimisticRow(idOverride?: number): ReservationRow {
@@ -531,12 +544,19 @@ export function AppointmentModal({
             {formData.staffs.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
+                {offDutyStaffIds.has(s.id) ? "（勤務外）" : ""}
                 {menuStaffIds.length > 0 && !menuStaffIds.includes(s.id)
                   ? "（このメニュー対象外）"
                   : ""}
               </option>
             ))}
           </Select>
+          {staffOffDuty && (
+            <p className="mt-1 text-xs text-warn">
+              {formatJpDate(form.date)}は臨時スタッフの出勤日として登録されていません。
+              このまま保存もできますが、予約表では「勤務外」と表示されます。
+            </p>
+          )}
           {staffOffMenu && (
             <p className="mt-1 text-xs text-warn">
               このメニューの対応スタッフに設定されていません（

@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
-import { staffWorksOn } from "@/helper/utils/staffWork";
+import { pickVisibleStaffs } from "@/helper/utils/staffWork";
 import { assignLanes } from "@/helper/utils/laneLayout";
 import { DateNav } from "@/feature/reservation/components/DateNav";
 import { CustomerCodeSearch } from "@/feature/reservation/components/CustomerCodeSearch";
 import { AppointmentModal } from "@/feature/reservation/components/AppointmentModal";
 import { TimeBlockModal } from "@/feature/reservation/components/TimeBlockModal";
 import { DayCalendar } from "@/feature/reservation/components/DayCalendar";
+import { OffDutyTag } from "@/feature/reservation/components/OffDutyTag";
 import {
   MoveConfirmModal,
   type MoveTarget,
@@ -202,26 +203,23 @@ export function ReservationBoard({
     });
 
   const rows = useMemo(() => {
-    // 臨時スタッフは「出勤日」または「その日に既存予約がある日」だけ列を出す。
-    const visibleStaffs = formData.staffs.filter((s) => {
-      if (!staffWorksOn(s, date)) {
-        const hasAppt = reservations.some((x) => x.staffId === s.id);
-        if (!hasAppt) return false;
-      }
-      return true;
-    });
+    // 臨時スタッフは「出勤日」だけ列を出す。出勤日以外は、その日に生きている
+    // 予約が残っているときだけ（予約が画面から消えないように）「勤務外」として出す。
+    const visibleStaffs = pickVisibleStaffs(formData.staffs, date, reservations);
     const r: {
       key: string;
       staffId: number | null;
       equipmentId: number | null;
       name: string;
       color: string | undefined;
+      offDuty: boolean;
     }[] = visibleStaffs.map((s) => ({
       key: `staff-${s.id}`,
       staffId: s.id,
       equipmentId: null,
       name: s.name,
       color: s.color as string | undefined,
+      offDuty: s.offDuty,
     }));
     for (const eq of formData.equipments ?? []) {
       r.push({
@@ -230,6 +228,7 @@ export function ReservationBoard({
         equipmentId: eq.id,
         name: eq.name,
         color: eq.color as string | undefined,
+        offDuty: false,
       });
     }
     const hasUnassigned = reservations.some(
@@ -242,6 +241,7 @@ export function ReservationBoard({
         equipmentId: null,
         name: "指名なし",
         color: undefined,
+        offDuty: false,
       });
     }
     return r;
@@ -535,6 +535,7 @@ export function ReservationBoard({
                       {row.name}
                     </span>
                   )}
+                  {row.offDuty && <OffDutyTag />}
                 </div>
 
                 <div

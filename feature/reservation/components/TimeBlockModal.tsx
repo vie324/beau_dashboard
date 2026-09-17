@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { timeSlots } from "@/helper/utils/timeOptions";
 import { addMinutes, jstDateTimeToDate } from "@/helper/utils/time";
+import { staffWorksOn } from "@/helper/utils/staffWork";
 import {
   saveTimeBlock,
   deleteTimeBlock,
@@ -29,7 +30,12 @@ export function TimeBlockModal({
   open: boolean;
   onClose: () => void;
   date: string;
-  staffs: { id: number; name: string }[];
+  staffs: {
+    id: number;
+    name: string;
+    spotMode?: boolean;
+    workDates?: string | null;
+  }[];
   equipments?: { id: number; name: string }[];
   initial?: ReservationRow | null;
   prefill?: {
@@ -94,6 +100,25 @@ export function TimeBlockModal({
     key: K,
     value: (typeof form)[K],
   ) => setForm((f) => ({ ...f, [key]: value }));
+
+  // ブロックの対象にできるのは その日に出勤するスタッフだけ。
+  // 臨時スタッフの出勤日以外はそもそも予約枠が出ないためブロック不要で、
+  // ブロックを作ると予約表に勤務外の列が復活してしまう（サーバー側も同じ判定）。
+  const blockableStaffs = useMemo(
+    () => staffs.filter((s) => staffWorksOn(s, form.date)),
+    [staffs, form.date],
+  );
+
+  // 既存ブロックを開いたときは、対象者が勤務外でも選択肢に残す（表示が空欄に
+  // ならないように）。新規作成では出勤者だけを出す。
+  const staffOptions = useMemo(() => {
+    const selected = form.staffId === "" ? null : Number(form.staffId);
+    if (selected == null || blockableStaffs.some((s) => s.id === selected)) {
+      return blockableStaffs;
+    }
+    const current = staffs.find((s) => s.id === selected);
+    return current ? [current, ...blockableStaffs] : blockableStaffs;
+  }, [blockableStaffs, staffs, form.staffId]);
 
   function buildBlockRow(
     target: { staffId: number | null; equipmentId: number | null },
@@ -185,7 +210,7 @@ export function TimeBlockModal({
       const base = -Date.now();
       optimisticAction = {
         type: "addMany",
-        rows: staffs.map((s, i) =>
+        rows: blockableStaffs.map((s, i) =>
           buildBlockRow({ staffId: s.id, equipmentId: null }, base - i),
         ),
       };
@@ -341,7 +366,7 @@ export function TimeBlockModal({
                   disabled={isEdit}
                 >
                   <option value="">全員</option>
-                  {staffs.map((s) => (
+                  {staffOptions.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
