@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/helper/lib/auth";
 import { getActiveShopId } from "@/helper/lib/shop-context";
 import { db } from "@/helper/lib/db";
 import { toLocalDateString } from "@/helper/utils/time";
-import { staffWorksOn } from "@/helper/utils/staffWork";
+import { pickVisibleStaffs } from "@/helper/utils/staffWork";
 import { getReservations } from "@/feature/reservation/services/getReservations";
 import { getReservationFormData } from "@/feature/reservation/services/getReservationFormData";
 import { getShopHours } from "@/feature/reservation/services/getShopHours";
@@ -39,14 +39,9 @@ export default async function ReservationPrintPage({
     }),
   ]);
 
-  // 臨時スタッフは出勤日でなく、その日に予約も無ければ列を出さない（予約管理ボードと同じ挙動）。
-  const visibleStaffs = formData.staffs.filter((s) => {
-    if (!staffWorksOn(s, date)) {
-      const hasAppt = reservations.some((x) => x.staffId === s.id);
-      if (!hasAppt) return false;
-    }
-    return true;
-  });
+  // 臨時スタッフは出勤日でなく、その日に生きている予約も無ければ列を出さない
+  // （予約管理ボードと同じ挙動）。
+  const visibleStaffs = pickVisibleStaffs(formData.staffs, date, reservations);
 
   return (
     <PrintTimeline

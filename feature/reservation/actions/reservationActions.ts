@@ -6,6 +6,7 @@ import { getActiveShopId } from "@/helper/lib/shop-context";
 import { getCurrentUser } from "@/helper/lib/auth";
 import { jstDateTimeToDate, addMinutes } from "@/helper/utils/time";
 import { FREEING_STATUSES } from "@/helper/utils/status";
+import { staffWorksOn } from "@/helper/utils/staffWork";
 import {
   appointmentSchema,
   timeBlockSchema,
@@ -413,13 +414,19 @@ export async function saveTimeBlock(
     return { ok: true };
   }
 
-  // 新規: 全員ブロック（予約可能スタッフ全員に1件ずつ作成）
-  const staffs = await db.staff.findMany({
+  // 新規: 全員ブロック（その日に出勤するスタッフ全員に1件ずつ作成）
+  const allStaffs = await db.staff.findMany({
     where: { shopId, deletedAt: null, isBookable: true },
-    select: { id: true, name: true },
+    select: { id: true, name: true, spotMode: true, workDates: true },
   });
-  if (staffs.length === 0) {
+  if (allStaffs.length === 0) {
     return { ok: false, error: "この店舗に対象スタッフがいません" };
+  }
+  // 臨時スタッフの出勤日以外は対象外。出勤しない日にブロックを作ってしまうと、
+  // 予約表にその人の列が復活してしまう（そもそもブロックする必要が無い）。
+  const staffs = allStaffs.filter((s) => staffWorksOn(s, input.date));
+  if (staffs.length === 0) {
+    return { ok: false, error: "この日に出勤予定のスタッフがいません" };
   }
   for (const s of staffs) {
     const avail = await checkStaffAvailability({

@@ -33,3 +33,52 @@ export function staffWorksOn(
   if (!staff.spotMode) return true;
   return parseWorkDates(staff.workDates).includes(dateStr);
 }
+
+/** 予約表の列を残すかの判定に使う、予約行の最小限の形。 */
+export type StaffColumnAppointment = {
+  staffId: number | null;
+  kind?: string | null;
+  status?: number | null;
+};
+
+/** 3 キャンセル / 4 当日キャンセル / 99 無断キャンセル */
+const CANCELLED_STATUSES = new Set([3, 4, 99]);
+
+/**
+ * 「まだ生きている通常予約」か。
+ * 時間ブロック (kind="block") と、キャンセル/無断キャンセルは含めない。
+ */
+export function isLiveAppointment(row: StaffColumnAppointment): boolean {
+  if ((row.kind ?? "appointment") === "block") return false;
+  return !CANCELLED_STATUSES.has(row.status ?? 0);
+}
+
+export type StaffColumnCandidate = {
+  id: number;
+  spotMode?: boolean;
+  workDates?: string | null;
+};
+
+/**
+ * その日の予約表に列を出すスタッフを選ぶ（予約管理ボードと印刷で共通）。
+ *
+ * - 常勤              : 常に表示
+ * - 臨時（出勤日）     : 表示
+ * - 臨時（出勤日以外） : 原則 非表示。ただし その日に生きている通常予約が
+ *   残っている場合だけ、その予約が画面から消えてしまわないよう例外的に表示し
+ *   `offDuty: true` を付ける（画面上は「勤務外」と表示する）。
+ *   時間ブロックやキャンセル済み予約しか無い日は表示しない。
+ */
+export function pickVisibleStaffs<T extends StaffColumnCandidate>(
+  staffs: T[],
+  dateStr: string,
+  appointments: StaffColumnAppointment[],
+): (T & { offDuty: boolean })[] {
+  return staffs
+    .map((s) => ({ ...s, offDuty: !staffWorksOn(s, dateStr) }))
+    .filter(
+      (s) =>
+        !s.offDuty ||
+        appointments.some((a) => a.staffId === s.id && isLiveAppointment(a)),
+    );
+}
