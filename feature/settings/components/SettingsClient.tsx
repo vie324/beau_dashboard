@@ -674,6 +674,8 @@ function ShopForm({
     closeTime: initial?.closeTime ?? "",
     breakStart: initial?.breakStart ?? "",
     breakEnd: initial?.breakEnd ?? "",
+    notifyEmail: initial?.notifyEmail ?? "",
+    notifyManualBooking: initial?.notifyManualBooking ?? false,
   });
   const [useDow, setUseDow] = useState(Object.keys(initialDow).length > 0);
   const [dow, setDow] = useState<HoursByDow>(initialDow);
@@ -925,6 +927,38 @@ function ShopForm({
               />
             </div>
           )}
+        </div>
+
+        <div className="rounded-xl border border-line bg-base/40 p-3">
+          <p className="mb-2 text-xs font-medium text-muted">
+            予約・キャンセルの通知
+          </p>
+          <Field label="通知先メールアドレス">
+            <Input
+              type="text"
+              value={f.notifyEmail}
+              onChange={(e) => setF({ ...f, notifyEmail: e.target.value })}
+              placeholder="salon@example.com, owner@example.com"
+            />
+          </Field>
+          <p className="mt-1 text-[11px] leading-relaxed text-faint">
+            ネット予約が入ったとき・予約がキャンセルされたときにメールを送ります。
+            複数の宛先はカンマ区切り。空欄ならメールは送らず、画面右上のベル通知だけになります。
+          </p>
+          <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={f.notifyManualBooking}
+              onChange={(e) =>
+                setF({ ...f, notifyManualBooking: e.target.checked })
+              }
+              className="accent-accent"
+            />
+            管理画面で登録した予約も通知する
+          </label>
+          <p className="mt-1 text-[11px] leading-relaxed text-faint">
+            オフのときはネット予約だけを通知します（キャンセルは操作元に関わらず通知）。
+          </p>
         </div>
 
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />

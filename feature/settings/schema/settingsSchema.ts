@@ -30,6 +30,24 @@ export const shopSchema = z.object({
   hoursByDow: z.string().optional().nullable(),
   // JSON string of specific-date overrides; structure validated in the action.
   dateOverrides: z.string().optional().nullable(),
+  // 予約・キャンセル通知メールの宛先。カンマ / 空白区切りで複数可。空で無効。
+  notifyEmail: z
+    .string()
+    .trim()
+    .max(300)
+    .optional()
+    .nullable()
+    .refine(
+      (v) =>
+        !v ||
+        v
+          .split(/[,\s;]+/)
+          .filter(Boolean)
+          .every((a) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)),
+      "通知先メールアドレスの形式が正しくありません（複数はカンマ区切り）",
+    ),
+  // 管理画面から手動で登録した予約も通知するか。
+  notifyManualBooking: bool.default(false),
 });
 export type ShopInput = z.infer<typeof shopSchema>;
 

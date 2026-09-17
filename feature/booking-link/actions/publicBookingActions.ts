@@ -15,6 +15,7 @@ import {
   checkEquipmentAvailability,
 } from "@/feature/reservation/actions/reservationActions";
 import { publicBookingSchema } from "@/feature/reservation/schema/reservationSchema";
+import { notifyAppointment } from "@/feature/notification/lib/notify";
 
 export type PublicResult =
   | { ok: true }
@@ -510,8 +511,9 @@ export async function submitPublicBooking(
     }
   }
 
+  let created: { id: number };
   try {
-    await db.appointment.create({
+    created = await db.appointment.create({
       data: {
         shopId: shop.id,
         menuId: menu.id,
@@ -527,6 +529,7 @@ export async function submitPublicBooking(
         guestPhone: input.guestPhone,
         note: input.note ?? null,
       },
+      select: { id: true },
     });
   } catch {
     return {
@@ -534,6 +537,10 @@ export async function submitPublicBooking(
       error: "予約の送信に失敗しました。時間をおいて再度お試しください",
     };
   }
+
+  // 店舗への通知（ベル＋メール）。notifyAppointment は例外を投げないので、
+  // 通知が失敗してもお客様の予約は成立したままにする。
+  await notifyAppointment({ appointmentId: created.id, kind: "reservation" });
 
   revalidatePath("/reservation");
   return { ok: true };

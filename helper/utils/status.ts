@@ -46,3 +46,17 @@ export const FREEING_STATUSES = [
   APPT_STATUS.SAME_DAY_CANCEL,
   APPT_STATUS.NO_SHOW,
 ];
+
+/**
+ * 「キャンセルされた」と通知する対象のステータス。
+ * no-show は当日に来なかった記録で、店舗側が後から付けるものなので含めない。
+ */
+export const CANCEL_STATUSES: number[] = [
+  APPT_STATUS.CANCEL,
+  APPT_STATUS.SAME_DAY_CANCEL,
+];
+
+/** すでにキャンセル/no-show なら、再度キャンセル通知を出さない。 */
+export function isCancelledStatus(status: number): boolean {
+  return (FREEING_STATUSES as number[]).includes(status);
+}
