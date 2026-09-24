@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { getCurrentUser } from "@/helper/lib/auth";
 import { getActiveBrandId, getActiveShopId } from "@/helper/lib/shop-context";
+import { getNotifySupport } from "@/helper/lib/schemaSupport";
 import {
   shopSchema,
   staffSchema,
@@ -70,6 +71,30 @@ export async function saveShop(
   const input = parsed.data;
   const brandId = await getActiveBrandId();
 
+  // 通知設定の列は手動マイグレーション未適用の本番DBには存在しない。
+  // 書き込みに混ぜると店舗の保存ごと P2022 で失敗するため、列がある場合だけ含める。
+  const notifySupport = await getNotifySupport();
+  const notifyData = notifySupport.columns
+    ? {
+        notifyEmail: input.notifyEmail || null,
+        notifyManualBooking: input.notifyManualBooking,
+      }
+    : {};
+
+  const base = {
+    name: input.name,
+    sortNumber: input.sortNumber,
+    address: input.address || null,
+    phone: input.phone || null,
+    lineUrl: input.lineUrl || null,
+    openTime: input.openTime || null,
+    closeTime: input.closeTime || null,
+    breakStart: input.breakStart || null,
+    breakEnd: input.breakEnd || null,
+    hoursByDow: cleanHoursByDow(input.hoursByDow),
+    dateOverrides: cleanDateOverrides(input.dateOverrides),
+  };
+
   try {
     if (input.id) {
       const exists = await db.shop.findFirst({
@@ -77,46 +102,30 @@ export async function saveShop(
         select: { id: true },
       });
       if (!exists) return fail("店舗が見つかりません");
+      // select を付けて書き込み後の RETURNING を id だけに絞る。既定では
+      // モデルの全列を返そうとするため、手動マイグレーション未適用のDBでは
+      // data に含めていない notifyEmail 等を読みに行って P2022 で落ちる。
       await db.shop.update({
         where: { id: input.id },
-        data: {
-          name: input.name,
-          sortNumber: input.sortNumber,
-          address: input.address || null,
-          phone: input.phone || null,
-          lineUrl: input.lineUrl || null,
-          openTime: input.openTime || null,
-          closeTime: input.closeTime || null,
-          breakStart: input.breakStart || null,
-          breakEnd: input.breakEnd || null,
-          hoursByDow: cleanHoursByDow(input.hoursByDow),
-          dateOverrides: cleanDateOverrides(input.dateOverrides),
-          notifyEmail: input.notifyEmail || null,
-          notifyManualBooking: input.notifyManualBooking,
-        },
+        data: { ...base, ...notifyData },
+        select: { id: true },
       });
     } else {
       await db.shop.create({
-        data: {
-          brandId,
-          name: input.name,
-          sortNumber: input.sortNumber,
-          address: input.address || null,
-          phone: input.phone || null,
-          lineUrl: input.lineUrl || null,
-          openTime: input.openTime || null,
-          closeTime: input.closeTime || null,
-          breakStart: input.breakStart || null,
-          breakEnd: input.breakEnd || null,
-          hoursByDow: cleanHoursByDow(input.hoursByDow),
-          dateOverrides: cleanDateOverrides(input.dateOverrides),
-          notifyEmail: input.notifyEmail || null,
-          notifyManualBooking: input.notifyManualBooking,
-        },
+        data: { brandId, ...base, ...notifyData },
+        select: { id: true },
       });
     }
   } catch {
     return fail("保存に失敗しました。時間をおいて再度お試しください");
+  }
+
+  if (!notifySupport.columns) {
+    // 店舗情報は保存できているので、通知設定だけ保存できなかったことを伝える。
+    revalidateAll();
+    return fail(
+      "店舗情報は保存しました。通知設定はデータベースの更新（prisma/manual-migrations.sql）が未適用のため保存されていません",
+    );
   }
   revalidateAll();
   return { ok: true };
@@ -137,7 +146,11 @@ export async function deleteShop(id: number): Promise<ActionResult> {
   if (remaining <= 1) return fail("最後の店舗は削除できません");
 
   try {
-    await db.shop.update({ where: { id }, data: { deletedAt: new Date() } });
+    await db.shop.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      select: { id: true },
+    });
   } catch {
     return fail("削除に失敗しました");
   }

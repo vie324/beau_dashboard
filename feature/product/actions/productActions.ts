@@ -320,6 +320,9 @@ export async function saveStorefrontSettings(
         storeAnnouncement: input.storeAnnouncement ?? null,
         storeHeroImageUrl: input.storeHeroImageUrl ?? null,
       },
+      // 書き込み後の RETURNING を id だけに絞る（既定はモデルの全列。手動
+      // マイグレーション未適用のDBだと存在しない列を読んで P2022 で落ちる）。
+      select: { id: true },
     });
   } catch (e) {
     const msg =
@@ -402,7 +405,11 @@ export async function saveLegalInfo(
   );
   const json = entries.length ? JSON.stringify(Object.fromEntries(entries)) : null;
   try {
-    await db.shop.update({ where: { id: shopId }, data: { legalInfo: json } });
+    await db.shop.update({
+      where: { id: shopId },
+      data: { legalInfo: json },
+      select: { id: true },
+    });
   } catch {
     return { ok: false, error: "保存に失敗しました" };
   }

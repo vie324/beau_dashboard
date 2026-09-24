@@ -28,6 +28,7 @@ export default async function SettingsPage() {
         visitSources={data.visitSources}
         cardColorPresets={data.cardColorPresets}
         activeShopName={activeShopName}
+        notifyReady={data.notifyReady}
       />
     </>
   );
