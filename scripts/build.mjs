@@ -8,10 +8,11 @@
 //    warning and still build, so the interface is always viewable on Vercel.
 //  - When DATABASE_URL is a connection pooler (PgBouncer / Supavisor
 //    transaction mode), DDL is not reliably supported and `prisma db push`
-//    can hang — in that case we skip schema sync entirely and rely on
-//    out-of-band schema management (Supabase SQL Editor, etc.). To re-enable
-//    build-time schema sync, set DIRECT_URL to a Session pooler or direct
-//    connection string.
+//    can hang — in that case we skip `db push` and instead apply
+//    prisma/manual-migrations.sql, which is hand-written idempotent DDL and
+//    goes through a pooler fine (single statements, no advisory locks).
+//    Set DIRECT_URL (Session pooler / direct connection) to also get the
+//    full `prisma db push` schema sync at build time.
 //  - Only a real code/compile error (next build) fails the deployment.
 import { execSync } from "node:child_process";
 
@@ -36,27 +37,36 @@ function run(cmd, env) {
   execSync(cmd, { stdio: "inherit", env: env ?? process.env });
 }
 
+/**
+ * 手書きの冪等 DDL を適用する。スクリプト側で失敗を握りつぶすので
+ * ここが原因でビルドが落ちることはないが、念のため二重に守っておく。
+ */
+function applyManualMigrations(env) {
+  try {
+    run("npx tsx prisma/apply-manual-migrations.ts", env);
+  } catch (err) {
+    console.warn(
+      "[beau] WARNING: could not apply prisma/manual-migrations.sql — " +
+        "continuing the build. Reason: " + (err?.message ?? String(err)),
+    );
+  }
+}
+
 run("npx prisma generate");
 
 if (hasDbUrl) {
   if (isPooler && !direct) {
-    // Pooler 経由では DDL が不安定なため schema sync をスキップ。
-    // スキーマは Supabase SQL Editor で管理するか、DIRECT_URL を設定する。
-    //
-    // 注意: ここをスキップすると、スキーマに列を足した PR をデプロイしても
-    // 本番DBに反映されず、Prisma が存在しない列を参照して P2022 等で
-    // 実行時エラーになる（画面はエラー境界に落ちる）。新しい列・テーブルを
-    // 追加した場合は、必ず Supabase SQL Editor で手動 DDL を流すか、
-    // DIRECT_URL を設定して build 時 sync を有効にすること。
+    // Pooler 経由では `prisma db push` の DDL が不安定なのでスキップする。
+    // 代わりに prisma/manual-migrations.sql（人が書いた冪等な DDL）を流す。
+    // こちらは単発の文を順に実行するだけなので pooler でも問題なく通り、
+    // 「列を足した PR をデプロイしたのに本番DBに反映されない」を防げる。
     console.warn(
-      "[beau] ⚠️ DATABASE_URL is a connection pooler (PgBouncer/Supavisor). " +
-        "Skipping `prisma db push` and seed — DDL is unreliable through the " +
-        "transaction pooler. If this deploy adds/changes schema (new columns " +
-        "or tables), apply the DDL manually in the Supabase SQL Editor, or " +
-        "set DIRECT_URL (Session pooler / direct connection) to re-enable " +
-        "schema sync at build time. Otherwise the app may hit runtime errors " +
-        "for missing columns.",
+      "[beau] DATABASE_URL is a connection pooler (PgBouncer/Supavisor). " +
+        "Skipping `prisma db push` (DDL is unreliable through the transaction " +
+        "pooler) and applying prisma/manual-migrations.sql instead. " +
+        "Set DIRECT_URL (Session pooler / direct connection) for full schema sync.",
     );
+    applyManualMigrations(process.env);
   } else {
     const pushEnv = direct
       ? { ...process.env, DATABASE_URL: direct }
@@ -72,6 +82,8 @@ if (hasDbUrl) {
           "points to a reachable database. Reason: " +
           (err?.message ?? String(err)),
       );
+      // db push が落ちた場合も、手書きの冪等 DDL だけは当ててみる。
+      applyManualMigrations(pushEnv);
     }
   }
 } else {

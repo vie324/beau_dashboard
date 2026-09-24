@@ -110,6 +110,7 @@ export function SettingsClient({
   visitSources,
   cardColorPresets,
   activeShopName,
+  notifyReady,
 }: {
   shops: ShopRow[];
   staffs: StaffRow[];
@@ -118,6 +119,8 @@ export function SettingsClient({
   visitSources: VisitSourceRow[];
   cardColorPresets: CardColorPresetRow[];
   activeShopName: string;
+  /** 通知機能の DDL が本番DBに適用済みか。未適用なら店舗フォームで案内を出す。 */
+  notifyReady: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("shops");
@@ -182,6 +185,7 @@ export function SettingsClient({
                 onClose={() => setModal(null)}
                 onSubmit={(fd) => submitForm(saveShop, fd)}
                 pending={pending}
+                notifyReady={notifyReady}
               />,
             )
           }
@@ -205,6 +209,7 @@ export function SettingsClient({
                     onClose={() => setModal(null)}
                     onSubmit={(fd) => submitForm(saveShop, fd)}
                     pending={pending}
+                    notifyReady={notifyReady}
                   />,
                 )
               }
@@ -657,11 +662,13 @@ function ShopForm({
   onClose,
   onSubmit,
   pending,
+  notifyReady,
 }: {
   initial?: ShopRow;
   onClose: () => void;
   onSubmit: (fd: FormData) => void;
   pending: boolean;
+  notifyReady: boolean;
 }) {
   const initialDow = parseHoursByDow(initial?.hoursByDow);
   const [f, setF] = useState({
@@ -933,10 +940,19 @@ function ShopForm({
           <p className="mb-2 text-xs font-medium text-muted">
             予約・キャンセルの通知
           </p>
+          {!notifyReady && (
+            <p className="mb-3 rounded-xl border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] leading-relaxed text-ink">
+              通知機能はまだ有効になっていません。データベースの更新（
+              <code className="text-accent">prisma/manual-migrations.sql</code>
+              の末尾）を Supabase の SQL Editor で実行すると使えるようになります。
+              適用するとこの案内は自動で消えます。
+            </p>
+          )}
           <Field label="通知先メールアドレス">
             <Input
               type="text"
               value={f.notifyEmail}
+              disabled={!notifyReady}
               onChange={(e) => setF({ ...f, notifyEmail: e.target.value })}
               placeholder="salon@example.com, owner@example.com"
             />
@@ -949,6 +965,7 @@ function ShopForm({
             <input
               type="checkbox"
               checked={f.notifyManualBooking}
+              disabled={!notifyReady}
               onChange={(e) =>
                 setF({ ...f, notifyManualBooking: e.target.checked })
               }

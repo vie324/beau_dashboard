@@ -1,10 +1,14 @@
--- 手動マイグレーション（Supabase SQL Editor で実行）
+-- スキーマ追加用の DDL（デプロイ時に自動適用される）
 --
 -- 本番DBが connection pooler 経由で、ビルド時の `prisma db push` がスキップ
--- される構成のため、スキーマに列を足したときはここに DDL を追記し、
--- Supabase SQL Editor（または psql）で手動実行する。
+-- される構成のため、スキーマに列・テーブルを足したときはここに DDL を追記する。
 --
--- すべて `IF NOT EXISTS` 等で冪等にしてあるので、再実行しても安全。
+-- ビルド時に prisma/apply-manual-migrations.ts が1文ずつ実行するので、
+-- 通常は Supabase SQL Editor での手作業は不要（デプロイすれば反映される）。
+-- 手で流したい場合も `psql -f` / SQL Editor にそのまま貼れる。
+--
+-- すべて `IF NOT EXISTS` 等で冪等にしてあるので、何度実行しても安全。
+-- 追記するときも必ず冪等な書き方にすること（毎デプロイ実行されるため）。
 
 -- 2026-05: 予約カードの背景色（PR #63 / Appointment.cardColor）
 -- これが未適用だと Prisma が存在しない列を参照し、P2022 で予約画面が

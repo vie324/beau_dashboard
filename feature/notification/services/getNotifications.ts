@@ -1,4 +1,5 @@
 import { db } from "@/helper/lib/db";
+import { getNotifySupport } from "@/helper/lib/schemaSupport";
 
 export type NotificationRow = {
   id: number;
@@ -26,6 +27,11 @@ export async function getNotifications(
   shopId: number,
   limit: number = NOTIFICATION_LIMIT,
 ): Promise<NotificationFeed> {
+  // Notification テーブルは手動マイグレーションを流すまで本番DBに存在しない。
+  // 未適用のあいだは毎回失敗するクエリを投げず、空の通知として扱う。
+  const support = await getNotifySupport();
+  if (!support.table) return { items: [], unread: 0 };
+
   const [rows, unread] = await Promise.all([
     db.notification.findMany({
       where: { shopId },
