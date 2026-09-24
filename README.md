@@ -50,9 +50,24 @@ npm run dev        # http://localhost:3000
 
 ## スキーマ変更の反映（本番）
 
-本番DBが connection pooler 経由の場合、ビルド時の `prisma db push` はスキップされます。
-スキーマを変更した PR をデプロイする際は `prisma/manual-migrations.sql` の該当セクションを
-Supabase SQL Editor で実行してください（すべて冪等）。
+本番DBが connection pooler 経由の場合、ビルド時の `prisma db push` はスキップされます
+（transaction pooler 越しの DDL は不安定なため）。代わりに、ビルド時に
+`prisma/manual-migrations.sql` を1文ずつ自動適用します。**通常は手作業不要で、
+デプロイすればスキーマが反映されます。**
+
+そのため、スキーマに列・テーブルを足したときは:
+
+1. `prisma/schema.prisma` を編集
+2. 同じ内容の**冪等な** DDL（`ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` 等）を
+   `prisma/manual-migrations.sql` の末尾に追記
+3. デプロイ（ビルド時に自動適用される）
+
+適用に失敗してもビルドは通ります。その場合はビルドログに失敗した文が出るので、
+Supabase SQL Editor で同じファイルを実行すれば手動でも復旧できます。
+なお未適用の機能は実行時に自動で無効化されるため、画面がエラーになることはありません。
+
+`DIRECT_URL`（Supabase の Session pooler / 直接接続の接続文字列）を設定すると、
+上記に加えてビルド時に `prisma db push` による完全なスキーマ同期も走ります。
 
 ## コマンド
 
@@ -63,6 +78,9 @@ npm run lint       # ESLint
 npm run typecheck  # 型チェックのみ
 npm run db:reset   # DB 初期化 + シード
 ```
+
+> `prisma/manual-migrations.sql` は本番（pooler 経由）向けの仕組みです。ローカルは
+> `prisma db push` でスキーマ全体が反映されるため、実行する必要はありません。
 
 ## 主要ディレクトリ
 
