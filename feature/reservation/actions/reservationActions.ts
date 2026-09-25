@@ -399,8 +399,17 @@ export async function saveTimeBlock(
     return { ok: true };
   }
 
-  // 新規: 設備ブロック (設備列でドラッグ作成された場合)。「全設備」のような複数同時作成は無し。
+  // 新規: 設備ブロック（設備行のドラッグ、または「＋ 時間ブロック」で設備を選択）。
+  // 「全設備」のような複数同時作成は無し。
   if (input.equipmentId) {
+    // 画面の選択肢は自店舗の設備だけだが、送信値は信用せず所属を確かめる。
+    const equipment = await db.equipment.findFirst({
+      where: { id: input.equipmentId, shopId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!equipment) {
+      return { ok: false, error: "設備が見つかりません" };
+    }
     const avail = await checkEquipmentAvailability({
       shopId,
       equipmentId: input.equipmentId,

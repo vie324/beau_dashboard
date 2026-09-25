@@ -862,6 +862,10 @@ export function ReservationBoard({
                         const staffName = r.staff?.name ?? "指名なし";
                         if (r.kind === "block") {
                           const label = r.blockLabel ?? "時間ブロック";
+                          // 設備ブロックはスタッフが付かないので、設備名を出す
+                          // （出さないと「指名なし」と表示されてしまう）。
+                          const target =
+                            r.staff?.name ?? r.equipment?.name ?? "指名なし";
                           return (
                             <li key={r.id}>
                               <button
@@ -886,7 +890,7 @@ export function ReservationBoard({
                                     {label}
                                   </div>
                                   <div className="mt-1 truncate text-xs text-muted">
-                                    {staffName}
+                                    {target}
                                   </div>
                                 </div>
                               </button>

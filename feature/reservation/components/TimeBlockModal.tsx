@@ -53,14 +53,6 @@ export function TimeBlockModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = Boolean(initial);
-  // 設備モード: initial か prefill のどちらかに equipmentId が入っていれば設備ブロックとして扱う。
-  // この場合 staffId は使わず、スタッフ列の切替UIも出さない。
-  const initialEquipmentId = initial?.equipmentId ?? prefill?.equipmentId ?? null;
-  const isEquipmentMode = initialEquipmentId != null;
-  const equipmentName = isEquipmentMode
-    ? (equipments?.find((eq) => eq.id === initialEquipmentId)?.name ??
-      "（設備）")
-    : null;
 
   const toTime = (d: Date) =>
     new Intl.DateTimeFormat("en-GB", {
@@ -86,13 +78,21 @@ export function TimeBlockModal({
       )
     : 60;
 
+  // 設備ブロックのときは equipmentId、スタッフブロックのときは staffId が入る。
+  // どちらも空 = 「全員」（その日に出勤するスタッフ全員に1件ずつ作る）。
+  const initialEquipmentId =
+    initial?.equipmentId ?? prefill?.equipmentId ?? null;
   const [form, setForm] = useState({
     date: initial ? toDateStr(initial.startAt) : date,
     startTime: initial
       ? toTime(initial.startAt)
       : (prefill?.startTime ?? "12:00"),
     durationMin: initial ? initialDuration : (prefill?.durationMin ?? 60),
-    staffId: initial?.staffId ?? prefill?.staffId ?? "",
+    staffId:
+      initialEquipmentId != null
+        ? ""
+        : (initial?.staffId ?? prefill?.staffId ?? ""),
+    equipmentId: (initialEquipmentId ?? "") as number | "",
     label: initial?.blockLabel ?? "",
   });
 
@@ -100,6 +100,10 @@ export function TimeBlockModal({
     key: K,
     value: (typeof form)[K],
   ) => setForm((f) => ({ ...f, [key]: value }));
+
+  // 対象の選択でモードが切り替わる（新規作成時はスタッフ⇔設備を行き来できる）。
+  const isEquipmentMode = form.equipmentId !== "";
+  const selectedEquipmentId = isEquipmentMode ? Number(form.equipmentId) : null;
 
   // ブロックの対象にできるのは その日に出勤するスタッフだけ。
   // 臨時スタッフの出勤日以外はそもそも予約枠が出ないためブロック不要で、
@@ -120,6 +124,36 @@ export function TimeBlockModal({
     return current ? [current, ...blockableStaffs] : blockableStaffs;
   }, [blockableStaffs, staffs, form.staffId]);
 
+  // 設備の選択肢。既存ブロックの設備が後から「予約不可」にされて一覧から
+  // 外れていても、表示が空欄にならないように選択肢へ足しておく。
+  const equipmentOptions = useMemo(() => {
+    const list = equipments ?? [];
+    if (
+      selectedEquipmentId == null ||
+      list.some((eq) => eq.id === selectedEquipmentId)
+    ) {
+      return list;
+    }
+    const name = initial?.equipment?.name ?? "（設備）";
+    return [{ id: selectedEquipmentId, name }, ...list];
+  }, [equipments, selectedEquipmentId, initial]);
+
+  // <select> の値: "" = 全員 / "s:<id>" = スタッフ / "e:<id>" = 設備
+  const targetValue = isEquipmentMode
+    ? `e:${form.equipmentId}`
+    : form.staffId === ""
+      ? ""
+      : `s:${form.staffId}`;
+  const setTarget = (value: string) => {
+    if (value.startsWith("e:")) {
+      setForm((f) => ({ ...f, equipmentId: Number(value.slice(2)), staffId: "" }));
+    } else if (value.startsWith("s:")) {
+      setForm((f) => ({ ...f, staffId: Number(value.slice(2)), equipmentId: "" }));
+    } else {
+      setForm((f) => ({ ...f, staffId: "", equipmentId: "" }));
+    }
+  };
+
   function buildBlockRow(
     target: { staffId: number | null; equipmentId: number | null },
     idOverride: number,
@@ -128,6 +162,9 @@ export function TimeBlockModal({
     const endAt = addMinutes(startAt, form.durationMin);
     const staff = target.staffId
       ? (staffs.find((s) => s.id === target.staffId) ?? null)
+      : null;
+    const equipment = target.equipmentId
+      ? (equipmentOptions.find((eq) => eq.id === target.equipmentId) ?? null)
       : null;
     return {
       id: idOverride,
@@ -155,6 +192,9 @@ export function TimeBlockModal({
       deletedAt: null,
       customer: null,
       staff: staff ? { id: staff.id, name: staff.name, color: null } : null,
+      equipment: equipment
+        ? { id: equipment.id, name: equipment.name, color: null }
+        : null,
       menu: null,
       visitSource: null,
     } as unknown as ReservationRow;
@@ -167,8 +207,8 @@ export function TimeBlockModal({
     fd.set("date", form.date);
     fd.set("startTime", form.startTime);
     fd.set("durationMin", String(form.durationMin));
-    if (isEquipmentMode && initialEquipmentId) {
-      fd.set("equipmentId", String(initialEquipmentId));
+    if (selectedEquipmentId != null) {
+      fd.set("equipmentId", String(selectedEquipmentId));
     } else if (form.staffId) {
       fd.set("staffId", String(form.staffId));
     }
@@ -190,11 +230,11 @@ export function TimeBlockModal({
           initial.id,
         ),
       };
-    } else if (isEquipmentMode && initialEquipmentId) {
+    } else if (selectedEquipmentId != null) {
       optimisticAction = {
         type: "add",
         row: buildBlockRow(
-          { staffId: null, equipmentId: initialEquipmentId },
+          { staffId: null, equipmentId: selectedEquipmentId },
           -Date.now(),
         ),
       };
@@ -347,37 +387,34 @@ export function TimeBlockModal({
             />
           </div>
           <div>
-            {isEquipmentMode ? (
-              <>
-                <Label>対象設備</Label>
-                <div className="flex h-10 items-center rounded-xl border border-line bg-base/50 px-3 text-sm text-ink">
-                  {equipmentName}
-                </div>
-                <p className="mt-1 text-[11px] text-faint">
-                  設備ブロックは対象を変更できません。別の設備に変える場合は削除して再作成してください。
-                </p>
-              </>
-            ) : (
-              <>
-                <Label>対象スタッフ</Label>
-                <Select
-                  value={form.staffId}
-                  onChange={(e) => set("staffId", e.target.value)}
-                  disabled={isEdit}
-                >
-                  <option value="">全員</option>
-                  {staffOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
+            <Label>対象</Label>
+            <Select
+              value={targetValue}
+              onChange={(e) => setTarget(e.target.value)}
+              disabled={isEdit}
+            >
+              <optgroup label="スタッフ">
+                <option value="">全員</option>
+                {staffOptions.map((s) => (
+                  <option key={`s${s.id}`} value={`s:${s.id}`}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+              {equipmentOptions.length > 0 && (
+                <optgroup label="設備">
+                  {equipmentOptions.map((eq) => (
+                    <option key={`e${eq.id}`} value={`e:${eq.id}`}>
+                      {eq.name}
                     </option>
                   ))}
-                </Select>
-                {isEdit && (
-                  <p className="mt-1 text-[11px] text-faint">
-                    対象スタッフの変更は一度削除して再作成してください。
-                  </p>
-                )}
-              </>
+                </optgroup>
+              )}
+            </Select>
+            {isEdit && (
+              <p className="mt-1 text-[11px] text-faint">
+                対象の変更は一度削除して再作成してください。
+              </p>
             )}
           </div>
         </div>
@@ -387,7 +424,11 @@ export function TimeBlockModal({
           <Input
             value={form.label}
             onChange={(e) => set("label", e.target.value)}
-            placeholder="休憩 / 会議 / 私用 など"
+            placeholder={
+              isEquipmentMode
+                ? "メンテナンス / 清掃 / 故障 など"
+                : "休憩 / 会議 / 私用 など"
+            }
             maxLength={40}
           />
         </div>
