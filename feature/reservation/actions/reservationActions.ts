@@ -555,6 +555,8 @@ export async function deleteTimeBlock(id: number): Promise<ActionResult> {
  * 患者番号（顧客 code）から該当顧客の予約一覧を取得する。
  * 「番号で検索 → その人の予約日にジャンプ」用。
  * 一致候補が複数ある場合に備えて配列で返す（通常は 0 or 1 件）。
+ * 各予約の登録日時・最終更新も返し、二重予約のどちらが消し忘れか・いつ誰が
+ * 入れた予約か、を一覧で見比べられるようにする。
  */
 export async function findCustomerAppointmentsByCode(code: string): Promise<{
   ok: true;
@@ -572,6 +574,10 @@ export async function findCustomerAppointmentsByCode(code: string): Promise<{
       status: number;
       menuName: string | null;
       staffName: string | null;
+      // 予約ミスの調査用: いつ登録・最終更新されたか、ネット予約か
+      createdAt: Date;
+      updatedAt: Date;
+      source: string;
     }[];
   }[];
 } | { ok: false; error: string }> {
@@ -605,6 +611,9 @@ export async function findCustomerAppointmentsByCode(code: string): Promise<{
       startAt: true,
       endAt: true,
       status: true,
+      createdAt: true,
+      updatedAt: true,
+      source: true,
       menu: { select: { name: true } },
       staff: { select: { name: true } },
     },
@@ -632,6 +641,9 @@ export async function findCustomerAppointmentsByCode(code: string): Promise<{
           status: a.status,
           menuName: a.menu?.name ?? null,
           staffName: a.staff?.name ?? null,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt,
+          source: a.source,
         })),
     })),
   };

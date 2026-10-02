@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { toLocalDateString, formatJpDate } from "@/helper/utils/time";
 import { parseWorkDates, serializeWorkDates } from "@/helper/utils/staffWork";
+import { STANDARD_CARD_COLORS } from "@/helper/utils/cardColors";
 import {
   parseHoursByDow,
   serializeHoursByDow,
@@ -502,7 +503,7 @@ export function SettingsClient({
       {tab === "cardColors" && (
         <Section
           title={`予約枠の色（${activeShopName}）`}
-          hint="予約モーダルで保存した色プリセットの一覧。名前と色をいつでも編集・削除できます。"
+          hint={`予約モーダルには標準の色（${STANDARD_CARD_COLORS.map((c) => c.name).join("・")}）が最初から並んでいます。ここでは「新規さん」「要相談」のように名前を付けた色を追加・編集・削除できます。`}
           onAdd={() =>
             setModal(
               <CardColorPresetForm

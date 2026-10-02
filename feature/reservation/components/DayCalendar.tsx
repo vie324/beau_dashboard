@@ -619,7 +619,9 @@ export function DayCalendar({
                           : "border-line bg-elevated"
                       } ${!r.confirmed && !cancelled ? "ring-1 ring-warn" : ""} ${
                         onCardDrop ? "cursor-grab active:cursor-grabbing" : ""
-                      } ${beingDragged ? "opacity-40" : ""}`}
+                      } ${beingDragged ? "opacity-40" : ""} ${
+                        r.cardColor ? "card-tinted" : ""
+                      }`}
                       style={{
                         top,
                         height,
@@ -663,7 +665,7 @@ export function DayCalendar({
                               {minToTime(s)}
                             </span>
                             <Badge
-                              className={`${meta.className} shrink-0 whitespace-nowrap`}
+                              className={`${meta.className} card-badge shrink-0 whitespace-nowrap`}
                             >
                               {meta.label}
                             </Badge>
