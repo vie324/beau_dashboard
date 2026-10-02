@@ -748,7 +748,9 @@ export function ReservationBoard({
                           cancelled
                             ? "border-line bg-elevated/60 opacity-60"
                             : "border-line bg-elevated"
-                        } ${!r.confirmed && !cancelled ? "ring-2 ring-warn" : ""}`}
+                        } ${!r.confirmed && !cancelled ? "ring-2 ring-warn" : ""} ${
+                          r.cardColor ? "card-tinted" : ""
+                        }`}
                         style={{
                           left,
                           width,
@@ -768,7 +770,7 @@ export function ReservationBoard({
                               潰れるので、時刻・患者名・メモを優先して省く。 */}
                           {width >= 90 && (
                             <Badge
-                              className={`${meta.className} shrink-0 whitespace-nowrap`}
+                              className={`${meta.className} card-badge shrink-0 whitespace-nowrap`}
                             >
                               {meta.label}
                             </Badge>
@@ -907,7 +909,9 @@ export function ReservationBoard({
                               onClick={() => openCardEdit(r)}
                               className={`flex w-full items-stretch gap-3 px-4 py-3.5 text-left transition-colors active:bg-elevated/60 ${
                                 cancelled ? "opacity-60" : ""
-                              } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""}`}
+                              } ${!r.confirmed && !cancelled ? "bg-warn/5" : ""} ${
+                                r.cardColor ? "card-tinted" : ""
+                              }`}
                               style={{ background: r.cardColor || undefined }}
                             >
                               <span
@@ -961,7 +965,7 @@ export function ReservationBoard({
                                 </div>
                               </div>
                               <Badge
-                                className={`${meta.className} shrink-0 self-start whitespace-nowrap`}
+                                className={`${meta.className} card-badge shrink-0 self-start whitespace-nowrap`}
                               >
                                 {meta.label}
                               </Badge>

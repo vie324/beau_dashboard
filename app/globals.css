@@ -88,3 +88,16 @@
     padding: 0;
   }
 }
+
+/* 背景色を付けた予約カード（Appointment.cardColor）。淡色の補足文字
+   （No.・メニュー名 等）と半透明のステータスバッジは色に沈んで読めなくなる
+   ため、色付きのカードでは補足文字を本文色の 80% まで濃くし、バッジに
+   白地を敷く。色の候補は helper/utils/cardColors.ts。
+   @layer の外に置くのは、Tailwind に hover: / placeholder: 等の派生ルールを
+   作らせないため（セレクタの詳細度が高いので、出力順に関係なく効く）。 */
+.card-tinted .text-faint {
+  color: theme("colors.ink / 80%");
+}
+.card-tinted .card-badge {
+  background-color: theme("colors.surface / 85%");
+}

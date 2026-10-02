@@ -10,6 +10,14 @@ import { timeSlots } from "@/helper/utils/timeOptions";
 import { addMinutes, jstDateTimeToDate, formatJpDate } from "@/helper/utils/time";
 import { filterCustomersByQuery } from "@/helper/utils/customerSort";
 import { activeMenuStaffIds } from "@/helper/utils/menuStaff";
+import {
+  STANDARD_CARD_COLORS,
+  findStandardCardColor,
+} from "@/helper/utils/cardColors";
+import {
+  formatStamp,
+  wasUpdatedAfterCreate,
+} from "@/helper/utils/bookingStamp";
 
 const TIME_SLOTS_15 = timeSlots(15);
 
@@ -475,6 +483,18 @@ export function AppointmentModal({
             >
               {initial.confirmed ? "未確認に戻す" : "確認済みにする"}
             </Button>
+            {/* 予約ミスの調査用: いつ入力された予約か（患者番号検索にも同じ表示）。 */}
+            <p className="flex basis-full flex-wrap items-center gap-x-2 text-[11px] tabular-nums text-muted">
+              <span>登録 {formatStamp(initial.createdAt)}</span>
+              {initial.source === "public" && (
+                <span className="rounded bg-info/10 px-1 font-medium text-info">
+                  ネット予約
+                </span>
+              )}
+              {wasUpdatedAfterCreate(initial.createdAt, initial.updatedAt) && (
+                <span>最終更新 {formatStamp(initial.updatedAt)}</span>
+              )}
+            </p>
           </div>
         )}
 
@@ -759,12 +779,17 @@ export function AppointmentModal({
   );
 }
 
+/** 「その他」タイルの背景（任意の色を選べることが一目で分かるように）。 */
+const OTHER_TILE_BG =
+  "linear-gradient(135deg, #f28b82, #fbe18a, #a3d9a5, #a5c4f2, #c9b3f0)";
+
 /**
  * 予約カードの背景色ピッカー。
- *  - 任意の色をカラーピッカーで選べる（既存の挙動）
+ *  - 標準カラー（黄色・赤・青・緑・茶色・ピンク 等）をタイルで並べ、ワンタップで適用
+ *  - 「その他」タイルから任意の色をカラーピッカーで選べる
  *  - 保存済みプリセット（CardColorPreset）をチップ表示し、タップで適用
- *  - 「現在の色を保存」で名前を付けて新規プリセット登録（モーダル外と即時連携）
- *  - チップ長押し（または ✕）で削除
+ *  - 「この色に名前を付けて保存」で新規プリセット登録（モーダル外と即時連携）
+ *  - チップの ✕ で削除
  *
  * プリセットは router.refresh() でサーバから再取得する（formData は server
  * component 側で next の revalidate を介して更新される）。
@@ -786,6 +811,12 @@ function CardColorPicker({
 
   const trimmed = (value ?? "").trim();
   const hasValue = trimmed.length > 0;
+  const standard = findStandardCardColor(trimmed);
+  // 標準カラーにも保存した色にも無い色 = 「その他」から選んだ色。
+  const isOther =
+    hasValue &&
+    !standard &&
+    !presets.some((p) => p.hexColor.toLowerCase() === trimmed.toLowerCase());
 
   function savePreset() {
     setErr(null);
@@ -822,71 +853,48 @@ function CardColorPicker({
   return (
     <div>
       <Label>背景色</Label>
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="color"
-          value={trimmed || "#d8b06a"}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-12 shrink-0 cursor-pointer rounded-lg border border-line bg-base p-1"
-          aria-label="予約カードの背景色"
+      <div className="grid grid-cols-5 gap-1.5">
+        <ColorTile
+          label="なし"
+          selected={!hasValue}
+          onClick={() => onChange("")}
+          className="bg-elevated"
         />
-        <span className="text-sm tabular-nums text-muted">
-          {hasValue ? trimmed : "デフォルト（自動）"}
-        </span>
-        {hasValue && (
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            className="text-xs text-accent underline-offset-2 hover:underline"
-          >
-            デフォルトに戻す
-          </button>
-        )}
-        {hasValue && !saving && (
-          <button
-            type="button"
-            onClick={() => setSaving(true)}
-            className="text-xs text-accent underline-offset-2 hover:underline"
-          >
-            現在の色を保存
-          </button>
-        )}
+        {STANDARD_CARD_COLORS.map((c) => (
+          <ColorTile
+            key={c.hex}
+            label={c.name}
+            selected={standard?.hex === c.hex}
+            onClick={() => onChange(c.hex)}
+            style={{ background: c.hex }}
+          />
+        ))}
+        {/* ネイティブのカラーピッカーを透明にしてタイル全面に重ねる。
+            タップが input そのものに届くので、どのブラウザでもピッカーが開く。 */}
+        <label
+          className={`${TILE_CLASS} cursor-pointer focus-within:ring-2 focus-within:ring-accent/40 ${
+            isOther ? TILE_SELECTED_CLASS : TILE_IDLE_CLASS
+          }`}
+          style={{ background: isOther ? trimmed : OTHER_TILE_BG }}
+          title="好きな色を選ぶ"
+        >
+          <span className="min-w-0 truncate rounded bg-surface/85 px-1">
+            その他
+          </span>
+          {isOther && <TileCheck />}
+          <input
+            type="color"
+            value={/^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed : "#d8b06a"}
+            onChange={(e) => onChange(e.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            aria-label="その他の色を選ぶ"
+          />
+        </label>
       </div>
 
-      {saving && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-base/40 px-3 py-2">
-          <span
-            className="h-5 w-5 shrink-0 rounded border border-line"
-            style={{ background: trimmed || "#d8b06a" }}
-          />
-          <Input
-            value={presetName}
-            onChange={(e) => setPresetName(e.target.value)}
-            placeholder="名前（例: 新規さん / 要相談）"
-            className="!h-8 max-w-[16rem]"
-            maxLength={40}
-            autoFocus
-          />
-          <Button size="sm" onClick={savePreset} disabled={pending}>
-            {pending ? "保存中…" : "保存"}
-          </Button>
-          <button
-            type="button"
-            onClick={() => {
-              setSaving(false);
-              setPresetName("");
-              setErr(null);
-            }}
-            className="text-xs text-muted underline-offset-2 hover:underline"
-            disabled={pending}
-          >
-            キャンセル
-          </button>
-        </div>
-      )}
-
       {presets.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="mr-0.5 text-[11px] text-faint">保存した色</span>
           {presets.map((p) => {
             const selected =
               trimmed.toLowerCase() === p.hexColor.toLowerCase();
@@ -926,6 +934,48 @@ function CardColorPicker({
         </div>
       )}
 
+      {hasValue && !saving && (
+        <button
+          type="button"
+          onClick={() => setSaving(true)}
+          className="mt-2 text-xs text-accent underline-offset-2 hover:underline"
+        >
+          この色に名前を付けて保存
+        </button>
+      )}
+
+      {saving && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-base/40 px-3 py-2">
+          <span
+            className="h-5 w-5 shrink-0 rounded border border-line"
+            style={{ background: trimmed || "#d8b06a" }}
+          />
+          <Input
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder="名前（例: 新規さん / 要相談）"
+            className="!h-8 max-w-[16rem]"
+            maxLength={40}
+            autoFocus
+          />
+          <Button size="sm" onClick={savePreset} disabled={pending}>
+            {pending ? "保存中…" : "保存"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setSaving(false);
+              setPresetName("");
+              setErr(null);
+            }}
+            className="text-xs text-muted underline-offset-2 hover:underline"
+            disabled={pending}
+          >
+            キャンセル
+          </button>
+        </div>
+      )}
+
       {err && (
         <p className="mt-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
           {err}
@@ -933,10 +983,54 @@ function CardColorPicker({
       )}
 
       <p className="mt-1 text-[11px] text-faint">
-        予約カードの背景色を自由に変更できます。保存しておくと「予約枠の色」として
-        いつでも再利用できます（顧客側には表示されません）。
+        {"よく使う色はタップするだけで付けられます。「その他」では好きな色を選べ、" +
+          "名前を付けて保存すると「予約枠の色」として再利用できます（顧客側には表示されません）。"}
       </p>
     </div>
+  );
+}
+
+const TILE_CLASS =
+  "relative flex h-10 min-w-0 items-center justify-center rounded-lg border px-0.5 text-[11px] font-medium text-ink transition-colors sm:h-9 sm:text-xs";
+const TILE_SELECTED_CLASS = "border-ink/50 ring-2 ring-accent";
+const TILE_IDLE_CLASS = "border-line hover:border-accent/70";
+
+/** 背景色の選択肢（1マス）。選択中は枠と右上の ✓ で示す（色だけに頼らない）。 */
+function ColorTile({
+  label,
+  selected,
+  onClick,
+  className,
+  style,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`${TILE_CLASS} ${selected ? TILE_SELECTED_CLASS : TILE_IDLE_CLASS} ${className ?? ""}`}
+      style={style}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      {selected && <TileCheck />}
+    </button>
+  );
+}
+
+function TileCheck() {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold leading-none text-accent-fg shadow-sm"
+    >
+      ✓
+    </span>
   );
 }
 

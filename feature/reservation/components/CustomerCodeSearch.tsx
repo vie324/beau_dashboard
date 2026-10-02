@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { findCustomerAppointmentsByCode } from "@/feature/reservation/actions/reservationActions";
 import { STATUS_OPTIONS } from "@/helper/utils/status";
+import {
+  formatStamp,
+  wasUpdatedAfterCreate,
+} from "@/helper/utils/bookingStamp";
 
 type FoundCustomer = {
   id: number;
@@ -22,6 +26,9 @@ type FoundCustomer = {
     status: number;
     menuName: string | null;
     staffName: string | null;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    source: string;
   }[];
 };
 
@@ -48,7 +55,10 @@ function statusLabel(s: number): string {
  *
  *   - 入力 → Enter または「検索」で server action を叩き、結果をモーダル表示
  *   - 行クリックで /reservation?date=<その日> + ?focus=<予約ID> に遷移
- *     （focus は将来該当予約を自動オープンするための予約。現在は日付遷移のみ）
+ *     （ReservationBoard が focus の予約のモーダルを自動で開く）
+ *   - 各行に「登録（予約を入力した日時）」「最終更新」「ネット予約」を出す。
+ *     予約ミスが起きたときに、その時間帯の受付担当や、二重予約のどちらが
+ *     後から入ったか（＝消し忘れはどちらか）を判断できるようにするため。
  */
 export function CustomerCodeSearch() {
   const router = useRouter();
@@ -94,7 +104,7 @@ export function CustomerCodeSearch() {
           onChange={(e) => setCode(e.target.value)}
           placeholder="患者No."
           aria-label="患者番号で予約検索"
-          className="!h-8 w-24 tabular-nums"
+          className="!h-8 !w-24 tabular-nums"
           inputMode="numeric"
           maxLength={20}
         />
@@ -149,7 +159,7 @@ export function CustomerCodeSearch() {
                       <button
                         type="button"
                         onClick={() => goto(a.date, a.id)}
-                        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-sm hover:bg-base/60"
+                        className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left text-sm hover:bg-base/60"
                       >
                         <span className="shrink-0 font-medium tabular-nums text-ink">
                           {dateLabelFmt.format(start)}
@@ -167,6 +177,17 @@ export function CustomerCodeSearch() {
                         <span className="ml-auto rounded bg-base px-1.5 py-0.5 text-[11px] text-muted">
                           {statusLabel(a.status)}
                         </span>
+                        <span className="flex basis-full flex-wrap items-center gap-x-2 text-[11px] tabular-nums text-muted">
+                          <span>登録 {formatStamp(a.createdAt)}</span>
+                          {a.source === "public" && (
+                            <span className="rounded bg-info/10 px-1 font-medium text-info">
+                              ネット予約
+                            </span>
+                          )}
+                          {wasUpdatedAfterCreate(a.createdAt, a.updatedAt) && (
+                            <span>最終更新 {formatStamp(a.updatedAt)}</span>
+                          )}
+                        </span>
                       </button>
                     </li>
                   );
@@ -175,6 +196,12 @@ export function CustomerCodeSearch() {
             )}
           </div>
         ))}
+        {results.some((c) => c.appointments.length > 0) && (
+          <p className="mt-3 text-[11px] leading-relaxed text-faint">
+            {"「登録」はその予約を入力して確定した日時、「最終更新」は日時・担当・ステータスなどを最後に変更した日時です。" +
+              "「ネット予約」はお客様がご自身で入れた予約です。"}
+          </p>
+        )}
       </Modal>
     </>
   );
