@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { toLocalDateString, formatJpDate } from "@/helper/utils/time";
+import { buildMonthCells, shiftMonth } from "@/helper/utils/calendar";
 import { parseWorkDates, serializeWorkDates } from "@/helper/utils/staffWork";
 import { STANDARD_CARD_COLORS } from "@/helper/utils/cardColors";
 import {
@@ -31,32 +32,6 @@ const DATE_OV_BADGE: Record<DateOverrideType, string> = {
   morning: "border-info/40 bg-info/15 text-info",
   afternoon: "border-warn/40 bg-warn/15 text-warn",
 };
-
-function shiftMonth(monthStr: string, delta: number): string {
-  const [y, m] = monthStr.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function buildMonthCells(monthStr: string): (string | null)[][] {
-  const [y, m] = monthStr.split("-").map(Number);
-  const startDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const flat: (string | null)[] = [];
-  for (let i = 0; i < 42; i++) {
-    const dayNum = i - startDow + 1;
-    if (dayNum < 1 || dayNum > daysInMonth) {
-      flat.push(null);
-    } else {
-      flat.push(
-        `${y}-${String(m).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`,
-      );
-    }
-  }
-  const rows: (string | null)[][] = [];
-  for (let i = 0; i < 6; i++) rows.push(flat.slice(i * 7, (i + 1) * 7));
-  return rows;
-}
 
 const DOW_LABELS: { key: string; label: string }[] = [
   { key: "1", label: "月" },

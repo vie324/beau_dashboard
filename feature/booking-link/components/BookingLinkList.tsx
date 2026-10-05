@@ -10,15 +10,49 @@ import {
   deleteBookingLink,
 } from "@/feature/booking-link/actions/bookingLinkActions";
 import type { BookingLinkRow } from "@/feature/booking-link/services/getBookingLinks";
+import {
+  SCHEDULE_MODE_LABEL,
+  describeSchedule,
+  isUnrestricted,
+  type LinkSchedule,
+  type ScheduleState,
+} from "@/feature/booking-link/lib/schedule";
+
+const STATE_BADGE: Record<
+  Exclude<ScheduleState, "open">,
+  { label: string; className: string }
+> = {
+  before: { label: "受付開始前", className: "border-info/30 bg-info/10 text-info" },
+  after: { label: "受付終了", className: "border-line bg-base text-faint" },
+  ended: { label: "受付終了", className: "border-line bg-base text-faint" },
+  full: { label: "満員", className: "border-warn/40 bg-warn/10 text-warn" },
+};
+
+/** このリンクで受け付けられる件数の目安（先着の上限 / 枠限定は 枠数 × 1枠の件数）。 */
+function bookingCapacity(s: LinkSchedule): number | null {
+  const bySlots =
+    s.mode === "slots" && s.slotCapacity != null
+      ? s.slots.length * s.slotCapacity
+      : null;
+  if (s.maxBookings != null && bySlots != null) {
+    return Math.min(s.maxBookings, bySlots);
+  }
+  return s.maxBookings ?? bySlots;
+}
 
 export function BookingLinkList({
   links,
   shops,
   menus,
+  scheduleSupported,
+  today,
 }: {
   links: BookingLinkRow[];
   shops: { id: number; name: string }[];
   menus: { id: number; name: string }[];
+  scheduleSupported: boolean;
+  /** 今日（JST）。サーバーで決めて渡す（日付の表示を SSR と揃えるため） */
+  today: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -40,7 +74,10 @@ export function BookingLinkList({
       }
     });
   const [modal, setModal] = useState<
-    { mode: "create" } | { mode: "edit"; row: BookingLinkRow } | null
+    | { mode: "create" }
+    | { mode: "edit"; row: BookingLinkRow }
+    | { mode: "copy"; row: BookingLinkRow }
+    | null
   >(null);
   const [copied, setCopied] = useState<number | null>(null);
 
@@ -67,12 +104,13 @@ export function BookingLinkList({
       )}
 
       <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-panel">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[980px] text-sm">
           <thead>
-            <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-faint">
+            <tr className="whitespace-nowrap border-b border-line text-left text-xs uppercase tracking-wider text-faint">
               <th className="px-4 py-3 font-medium">リンク名</th>
               <th className="px-4 py-3 font-medium">公開URL</th>
               <th className="px-4 py-3 font-medium">対象</th>
+              <th className="px-4 py-3 font-medium">受付する日時</th>
               <th className="px-4 py-3 font-medium">状態</th>
               <th className="px-4 py-3 font-medium">リマインド</th>
               <th className="px-4 py-3" />
@@ -81,104 +119,142 @@ export function BookingLinkList({
           <tbody>
             {links.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-faint">
+                <td colSpan={7} className="px-4 py-10 text-center text-faint">
                   予約リンクがありません。「新規リンク」から作成してください。
                 </td>
               </tr>
             )}
-            {links.map((l) => (
-              <tr
-                key={l.id}
-                className="border-b border-line/70 last:border-b-0 hover:bg-elevated/40"
-              >
-                <td className="px-4 py-3">
-                  <div className="font-medium text-ink">{l.name}</div>
-                  {l.description && (
-                    <div className="mt-0.5 max-w-xs truncate text-xs text-faint">
-                      {l.description}
+            {links.map((l) => {
+              const capacity = bookingCapacity(l.schedule);
+              const stateBadge = l.state === "open" ? null : STATE_BADGE[l.state];
+              return (
+                <tr
+                  key={l.id}
+                  className="border-b border-line/70 align-top last:border-b-0 hover:bg-elevated/40"
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-ink">{l.name}</div>
+                    {l.description && (
+                      <div className="mt-0.5 max-w-xs truncate text-xs text-faint">
+                        {l.description}
+                      </div>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <code className="rounded bg-base px-2 py-1 text-xs text-muted">
+                        /book/{l.slug}
+                      </code>
+                      <button
+                        onClick={() => copy(l.id, l.slug)}
+                        className="text-xs text-accent hover:text-accent-hover"
+                      >
+                        {copied === l.id ? "コピー済" : "コピー"}
+                      </button>
+                      <a
+                        href={`/book/${l.slug}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-muted hover:text-ink"
+                      >
+                        開く ↗
+                      </a>
                     </div>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <code className="rounded bg-base px-2 py-1 text-xs text-muted">
-                      /book/{l.slug}
-                    </code>
-                    <button
-                      onClick={() => copy(l.id, l.slug)}
-                      className="text-xs text-accent hover:text-accent-hover"
-                    >
-                      {copied === l.id ? "コピー済" : "コピー"}
-                    </button>
-                    <a
-                      href={`/book/${l.slug}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-muted hover:text-ink"
-                    >
-                      開く ↗
-                    </a>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-muted">
-                  {l.shopName ? (
-                    <Badge className="border-info/30 bg-info/10 text-info">
-                      {l.shopName}
-                    </Badge>
-                  ) : (
-                    <Badge className="border-line bg-base text-muted">
-                      ブランド共通
-                    </Badge>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    disabled={pending}
-                    className="disabled:opacity-50"
-                    onClick={() =>
-                      run(() => toggleBookingLink(l.id, !l.isActive))
-                    }
-                  >
-                    {l.isActive ? (
-                      <Badge className="border-ok/30 bg-ok/15 text-ok">
-                        公開中
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">
+                    {l.shopName ? (
+                      <Badge className="border-info/30 bg-info/10 text-info">
+                        {l.shopName}
                       </Badge>
                     ) : (
-                      <Badge className="border-line bg-base text-faint">
-                        停止中
+                      <Badge className="border-line bg-base text-muted">
+                        ブランド共通
                       </Badge>
                     )}
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-xs text-muted">
-                  {l.reminderEnabled
-                    ? `${l.reminderHoursBefore}時間前`
-                    : "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setModal({ mode: "edit", row: l })}
-                    >
-                      編集
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={pending}
-                      onClick={() => {
-                        if (!confirm(`「${l.name}」を削除しますか？`)) return;
-                        run(() => deleteBookingLink(l.id));
-                      }}
-                    >
-                      {pending ? "削除中…" : "削除"}
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="min-w-[220px] max-w-[300px] px-4 py-3">
+                    {isUnrestricted(l.schedule) ? (
+                      <span className="text-xs text-faint">営業日はいつでも</span>
+                    ) : (
+                      <div className="space-y-1">
+                        <Badge className="border-accent/40 bg-accent/10 text-accent-hover">
+                          {SCHEDULE_MODE_LABEL[l.schedule.mode]}
+                        </Badge>
+                        <ul className="space-y-0.5 text-xs text-muted">
+                          {describeSchedule(l.schedule, today).map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="mt-1 text-[11px] text-faint">
+                      予約 {l.bookedCount}件
+                      {capacity != null && ` / ${capacity}件`}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      <button
+                        disabled={pending}
+                        className="disabled:opacity-50"
+                        onClick={() =>
+                          run(() => toggleBookingLink(l.id, !l.isActive))
+                        }
+                      >
+                        {l.isActive ? (
+                          <Badge className="border-ok/30 bg-ok/15 text-ok">
+                            公開中
+                          </Badge>
+                        ) : (
+                          <Badge className="border-line bg-base text-faint">
+                            停止中
+                          </Badge>
+                        )}
+                      </button>
+                      {l.isActive && stateBadge && (
+                        <Badge className={stateBadge.className}>
+                          {stateBadge.label}
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-xs text-muted">
+                    {l.reminderEnabled
+                      ? `${l.reminderHoursBefore}時間前`
+                      : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setModal({ mode: "edit", row: l })}
+                      >
+                        編集
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setModal({ mode: "copy", row: l })}
+                      >
+                        複製
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={pending}
+                        onClick={() => {
+                          if (!confirm(`「${l.name}」を削除しますか？`)) return;
+                          run(() => deleteBookingLink(l.id));
+                        }}
+                      >
+                        {pending ? "削除中…" : "削除"}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -189,7 +265,9 @@ export function BookingLinkList({
           onClose={() => setModal(null)}
           shops={shops}
           menus={menus}
-          initial={modal.mode === "edit" ? modal.row : null}
+          initial={modal.mode === "create" ? null : modal.row}
+          duplicate={modal.mode === "copy"}
+          scheduleSupported={scheduleSupported}
         />
       )}
     </>

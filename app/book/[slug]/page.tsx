@@ -45,8 +45,26 @@ export default async function PublicBookingPage({
               {data.link.description}
             </p>
           )}
+          {data.notices.length > 0 && (
+            <ul className="mt-4 space-y-1 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-xs leading-relaxed text-ink">
+              {data.notices.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          )}
           <div className="mt-5">
-            {data.menus.length === 0 || data.shops.length === 0 ? (
+            {data.status.state !== "open" ? (
+              <div className="rounded-xl border border-line bg-base px-4 py-6 text-center">
+                <p className="text-sm font-medium text-ink">
+                  {data.status.message}
+                </p>
+                {data.status.state !== "before" && (
+                  <p className="mt-2 text-xs text-muted">
+                    ご予約・お問い合わせは店舗まで直接ご連絡ください。
+                  </p>
+                )}
+              </div>
+            ) : data.menus.length === 0 || data.shops.length === 0 ? (
               <p className="rounded-xl border border-line bg-base px-4 py-6 text-center text-sm text-muted">
                 現在オンラインで予約できるメニューがありません。
                 <br />

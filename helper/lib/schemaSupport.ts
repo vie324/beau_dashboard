@@ -58,3 +58,28 @@ export async function getNotifySupport(): Promise<NotifySupport> {
     return { columns: false, table: false, ready: false };
   }
 }
+
+let bookingScheduleSupport = false;
+
+/**
+ * 予約リンクの受付日時の制限（BookingLink.schedule 列）が使えるか。
+ * 未適用のあいだは列を SELECT / RETURNING に含めない（P2022 で予約ページが落ちるため）。
+ * 判定に失敗した場合も「未適用」として扱う。
+ */
+export async function getBookingScheduleSupport(): Promise<boolean> {
+  if (bookingScheduleSupport) return true;
+  try {
+    const [row] = await db.$queryRaw<{ n: number }[]>`
+      SELECT COUNT(*)::int AS "n"
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'BookingLink'
+        AND column_name = 'schedule'
+    `;
+    const ready = Number(row?.n ?? 0) === 1;
+    if (ready) bookingScheduleSupport = true;
+    return ready;
+  } catch {
+    return false;
+  }
+}

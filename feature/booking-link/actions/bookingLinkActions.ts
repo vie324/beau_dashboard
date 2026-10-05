@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { getCurrentUser } from "@/helper/lib/auth";
 import { getActiveBrandId } from "@/helper/lib/shop-context";
+import { getBookingScheduleSupport } from "@/helper/lib/schemaSupport";
 import { bookingLinkSchema } from "@/feature/booking-link/schema/bookingLinkSchema";
+import { serializeSchedule } from "@/feature/booking-link/lib/schedule";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -18,6 +20,18 @@ function readForm(formData: FormData) {
     }
   } catch {
     allowedMenuIds = [];
+  }
+
+  // 受付する日時（JSON）。送られてこない = 変更しない（古い画面からの保存で
+  // 既存の制限を消さないため）。読めない値は null にして検証エラーにする。
+  let schedule: unknown = undefined;
+  const rawSchedule = formData.get("schedule");
+  if (typeof rawSchedule === "string") {
+    try {
+      schedule = JSON.parse(rawSchedule);
+    } catch {
+      schedule = null;
+    }
   }
 
   return {
@@ -38,6 +52,7 @@ function readForm(formData: FormData) {
     intervalMin: Number(formData.get("intervalMin") ?? 30),
     reminderEnabled: formData.get("reminderEnabled") === "true",
     reminderHoursBefore: Number(formData.get("reminderHoursBefore") ?? 24),
+    schedule,
   };
 }
 
@@ -69,6 +84,23 @@ export async function saveBookingLink(
     return { ok: false, error: `slug「${input.slug}」は既に使われています` };
   }
 
+  // 受付する日時。列が無い（DDL 未適用）のに制限を保存しようとしたら、黙って
+  // 捨てると「限定のつもりのリンクが無制限で公開される」ので保存自体を止める。
+  const scheduleSupported = await getBookingScheduleSupport();
+  let scheduleData: { schedule?: string | null } = {};
+  if (input.schedule) {
+    const json = serializeSchedule(input.schedule);
+    if (scheduleSupported) {
+      scheduleData = { schedule: json };
+    } else if (json) {
+      return {
+        ok: false,
+        error:
+          "「受付する日時」の制限を保存するにはデータベースの更新が必要です。管理者に prisma/manual-migrations.sql の適用を依頼してください",
+      };
+    }
+  }
+
   const data = {
     brandId,
     shopId: input.shopId ?? null,
@@ -85,6 +117,7 @@ export async function saveBookingLink(
       enabled: input.reminderEnabled,
       hoursBefore: input.reminderHoursBefore,
     }),
+    ...scheduleData,
   };
 
   try {
@@ -94,9 +127,13 @@ export async function saveBookingLink(
         select: { id: true },
       });
       if (!existing) return { ok: false, error: "リンクが見つかりません" };
-      await db.bookingLink.update({ where: { id: input.id }, data });
+      await db.bookingLink.update({
+        where: { id: input.id },
+        data,
+        select: { id: true },
+      });
     } else {
-      await db.bookingLink.create({ data });
+      await db.bookingLink.create({ data, select: { id: true } });
     }
   } catch (e) {
     if (
@@ -127,7 +164,11 @@ export async function toggleBookingLink(
   if (!existing) return { ok: false, error: "リンクが見つかりません" };
 
   try {
-    await db.bookingLink.update({ where: { id }, data: { isActive } });
+    await db.bookingLink.update({
+      where: { id },
+      data: { isActive },
+      select: { id: true },
+    });
   } catch {
     return { ok: false, error: "状態の変更に失敗しました" };
   }
@@ -148,6 +189,7 @@ export async function deleteBookingLink(id: number): Promise<ActionResult> {
     await db.bookingLink.update({
       where: { id },
       data: { deletedAt: new Date() },
+      select: { id: true },
     });
   } catch {
     return { ok: false, error: "削除に失敗しました" };

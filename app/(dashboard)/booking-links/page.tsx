@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { db } from "@/helper/lib/db";
 import { getActiveBrandId } from "@/helper/lib/shop-context";
+import { getBookingScheduleSupport } from "@/helper/lib/schemaSupport";
+import { toLocalDateString } from "@/helper/utils/time";
 import { getBookingLinks } from "@/feature/booking-link/services/getBookingLinks";
 import { BookingLinkList } from "@/feature/booking-link/components/BookingLinkList";
 
@@ -16,7 +18,7 @@ export default async function BookingLinksPage() {
   });
   const shopIds = shops.map((s) => s.id);
 
-  const [links, menus] = await Promise.all([
+  const [links, menus, scheduleSupported] = await Promise.all([
     getBookingLinks(brandId),
     db.menu.findMany({
       where: {
@@ -26,15 +28,22 @@ export default async function BookingLinksPage() {
       orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
       select: { id: true, name: true },
     }),
+    getBookingScheduleSupport(),
   ]);
 
   return (
     <>
       <PageHeader
         title="予約リンク"
-        description="公開予約ページ（/book/&lt;slug&gt;）を発行します。slug ごとに対象店舗・予約可能メニュー・リマインドを制御できます。"
+        description="公開予約ページ（/book/&lt;slug&gt;）を発行します。slug ごとに対象店舗・予約可能メニュー・受付する日時（日付限定・期間限定・枠限定）・定員・リマインドを制御できます。"
       />
-      <BookingLinkList links={links} shops={shops} menus={menus} />
+      <BookingLinkList
+        links={links}
+        shops={shops}
+        menus={menus}
+        scheduleSupported={scheduleSupported}
+        today={toLocalDateString()}
+      />
     </>
   );
 }

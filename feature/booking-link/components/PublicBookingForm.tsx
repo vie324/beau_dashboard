@@ -1,36 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import {
   submitPublicBooking,
   getPublicAvailability,
+  type AvailabilityDay,
   type AvailabilityResult,
 } from "@/feature/booking-link/actions/publicBookingActions";
 import type { PublicBookingData } from "@/feature/booking-link/services/getBookingLinkBySlug";
 import { capableStaffIds } from "@/helper/utils/menuStaff";
+import {
+  addDaysYmd,
+  formatLongDate,
+  formatShortDate,
+} from "@/feature/booking-link/lib/schedule";
 
-function todayJst(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-function shiftYmd(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const base = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  base.setUTCDate(base.getUTCDate() + days);
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(base);
+/** 画面内の日付が連続した7日（従来の週表示）か。 */
+function isWeekPage(days: AvailabilityDay[]): boolean {
+  return (
+    days.length === 7 && addDaysYmd(days[0].date, 6) === days[6].date
+  );
 }
 
 export function PublicBookingForm({
@@ -41,16 +40,16 @@ export function PublicBookingForm({
   data: PublicBookingData;
 }) {
   const router = useRouter();
-  const [today] = useState(todayJst);
-  const [weekStart, setWeekStart] = useState(todayJst);
+  // 表示中の画面の先頭日。null = 今日（サーバーが決める）
+  const [cursor, setCursor] = useState<string | null>(null);
 
   const [shopId, setShopId] = useState<number>(data.shops[0]?.id ?? 0);
   const [menuId, setMenuId] = useState<number>(data.menus[0]?.id ?? 0);
-  const interval = data.link.intervalMin;
   const [staffId, setStaffId] = useState<string>("");
 
   const [avail, setAvail] = useState<AvailabilityResult | null>(null);
   const [loading, startLoad] = useTransition();
+  const requestId = useRef(0);
 
   const [picked, setPicked] = useState<{ date: string; time: string } | null>(
     null,
@@ -58,6 +57,8 @@ export function PublicBookingForm({
   const [guest, setGuest] = useState({ name: "", phone: "", note: "" });
   const [submitting, startSubmit] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // 送信した枠が埋まっていた等で、選び直してもらうときの案内（カレンダーの上に出す）
+  const [notice, setNotice] = useState<string | null>(null);
 
   const guestSectionRef = useRef<HTMLDivElement>(null);
   const guestNameRef = useRef<HTMLInputElement>(null);
@@ -92,21 +93,28 @@ export function PublicBookingForm({
     if (!staffOptions.some((s) => String(s.id) === staffId)) setStaffId("");
   }, [staffOptions, staffId]);
 
-  useEffect(() => {
-    if (!shopId || !menuId) return;
-    setPicked(null);
-    startLoad(async () => {
-      const r = await getPublicAvailability({
+  const fetchAvailability = useCallback(
+    () =>
+      getPublicAvailability({
         slug,
         shopId,
         menuId,
-        interval,
-        weekStart,
         staffId: staffId ? Number(staffId) : null,
-      });
-      setAvail(r);
+        cursor,
+      }),
+    [slug, shopId, menuId, staffId, cursor],
+  );
+
+  useEffect(() => {
+    if (!shopId || !menuId) return;
+    setPicked(null);
+    const id = ++requestId.current;
+    startLoad(async () => {
+      const r = await fetchAvailability();
+      // 連打などで追い越された古い応答は捨てる
+      if (id === requestId.current) setAvail(r);
     });
-  }, [slug, shopId, menuId, interval, weekStart, staffId]);
+  }, [shopId, menuId, fetchAvailability]);
 
   function confirm() {
     setError(null);
@@ -119,24 +127,51 @@ export function PublicBookingForm({
       setError("電話番号を正しく入力してください");
       return;
     }
+    const target = picked;
     const fd = new FormData();
     fd.set("slug", slug);
     fd.set("shopId", String(shopId));
     fd.set("menuId", String(menuId));
     if (staffId) fd.set("staffId", staffId);
-    fd.set("date", picked.date);
-    fd.set("startTime", picked.time);
+    fd.set("date", target.date);
+    fd.set("startTime", target.time);
     fd.set("guestName", guest.name);
     fd.set("guestPhone", guest.phone);
     if (guest.note) fd.set("note", guest.note);
     startSubmit(async () => {
       const res = await submitPublicBooking(null, fd);
-      if (res.ok) router.push(`/booking-complete?shop=${shopId}`);
-      else setError(res.error);
+      if (res.ok) {
+        router.push(`/booking-complete?shop=${shopId}`);
+        return;
+      }
+      // 枠が埋まった・締切を過ぎた等のことがあるので、空き状況を取り直す。
+      // 選んだ枠がもう取れないなら選択を外し、カレンダーの上で案内する。
+      const id = ++requestId.current;
+      const r = await fetchAvailability();
+      if (id === requestId.current) setAvail(r);
+      const stillFree =
+        r.ok && r.days.find((d) => d.date === target.date)?.avail[target.time];
+      if (stillFree) {
+        setError(res.error);
+      } else {
+        setPicked(null);
+        setNotice(res.error);
+      }
     });
   }
 
-  const canGoPrev = weekStart > today;
+  const ok = avail && avail.ok ? avail : null;
+  const weekPage = ok ? isWeekPage(ok.days) : true;
+  const pageLabel =
+    ok && ok.days.length
+      ? ok.days.length === 1
+        ? formatShortDate(ok.days[0].date)
+        : `${formatShortDate(ok.days[0].date)}〜${formatShortDate(ok.days[ok.days.length - 1].date)}`
+      : "";
+  const pick = (date: string, time: string) => {
+    setNotice(null);
+    setPicked({ date, time });
+  };
 
   return (
     <div className="space-y-4">
@@ -187,30 +222,38 @@ export function PublicBookingForm({
         </div>
       )}
 
-      {/* Week navigation */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          disabled={!canGoPrev || loading}
-          onClick={() => setWeekStart((w) => shiftYmd(w, -7))}
-          className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
-        >
-          ‹ 前の一週間
-        </button>
-        <span className="text-xs font-medium text-muted">
-          {weekStart.replace(/-/g, "/")} 〜
-        </span>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => setWeekStart((w) => shiftYmd(w, 7))}
-          className="rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
-        >
-          次の一週間 ›
-        </button>
-      </div>
+      {notice && (
+        <p className="rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
+          {notice}
+        </p>
+      )}
 
-      {/* Availability grid */}
+      {/* Date navigation（1画面に収まるときは出さない） */}
+      {ok && (ok.prevCursor || ok.nextCursor) && (
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            disabled={!ok.prevCursor || loading}
+            onClick={() => ok.prevCursor && setCursor(ok.prevCursor)}
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
+          >
+            {weekPage ? "‹ 前の一週間" : "‹ 前の日程"}
+          </button>
+          <span className="text-center text-xs font-medium text-muted">
+            {pageLabel}
+          </span>
+          <button
+            type="button"
+            disabled={!ok.nextCursor || loading}
+            onClick={() => ok.nextCursor && setCursor(ok.nextCursor)}
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-40"
+          >
+            {weekPage ? "次の一週間 ›" : "次の日程 ›"}
+          </button>
+        </div>
+      )}
+
+      {/* Availability */}
       <div className="overflow-x-auto rounded-xl border border-line">
         {loading && (
           <p className="px-3 py-10 text-center text-sm text-faint">
@@ -222,19 +265,43 @@ export function PublicBookingForm({
             {avail.error}
           </p>
         )}
-        {!loading && avail && avail.ok && avail.times.length === 0 && (
+        {!loading && ok && ok.days.length === 0 && (
           <p className="px-3 py-10 text-center text-sm text-faint">
-            予約可能な時間がありません。営業時間をご確認ください。
+            ご予約いただける日時がありません。
           </p>
         )}
-        {!loading && avail && avail.ok && avail.times.length > 0 && (
-          <table className="w-full min-w-[560px] border-collapse text-center text-xs">
+        {!loading && ok && ok.days.length > 0 && ok.layout === "slots" && (
+          <SlotList
+            days={ok.days}
+            slotCapacity={ok.slotCapacity}
+            picked={picked}
+            onPick={pick}
+          />
+        )}
+        {!loading &&
+          ok &&
+          ok.days.length > 0 &&
+          ok.layout === "grid" &&
+          ok.times.length === 0 && (
+            <p className="px-3 py-10 text-center text-sm text-faint">
+              予約可能な時間がありません。営業時間をご確認ください。
+            </p>
+          )}
+        {!loading &&
+          ok &&
+          ok.days.length > 0 &&
+          ok.layout === "grid" &&
+          ok.times.length > 0 && (
+          <table
+            className="w-full border-collapse text-center text-xs"
+            style={{ minWidth: 56 + ok.days.length * 72 }}
+          >
             <thead>
               <tr className="bg-base/60">
                 <th className="sticky left-0 z-10 w-14 bg-base/60 px-2 py-2 font-medium text-faint">
                   時間
                 </th>
-                {avail.days.map((d) => (
+                {ok.days.map((d) => (
                   <th
                     key={d.date}
                     className={`px-1 py-2 font-medium ${
@@ -252,12 +319,12 @@ export function PublicBookingForm({
               </tr>
             </thead>
             <tbody>
-              {avail.times.map((t) => (
+              {ok.times.map((t) => (
                 <tr key={t} className="border-t border-line/70">
                   <td className="sticky left-0 z-10 bg-surface px-2 py-1.5 font-medium tabular-nums text-muted">
                     {t}
                   </td>
-                  {avail.days.map((d) => {
+                  {ok.days.map((d) => {
                     const free = d.avail[t];
                     const isPicked =
                       picked?.date === d.date && picked?.time === t;
@@ -269,9 +336,7 @@ export function PublicBookingForm({
                         {free ? (
                           <button
                             type="button"
-                            onClick={() =>
-                              setPicked({ date: d.date, time: t })
-                            }
+                            onClick={() => pick(d.date, t)}
                             className={`flex h-9 w-full items-center justify-center text-lg font-semibold transition-colors ${
                               isPicked
                                 ? "bg-danger text-white"
@@ -303,7 +368,7 @@ export function PublicBookingForm({
           className="animate-fade-in scroll-mt-4 space-y-4 rounded-xl border border-accent/40 bg-accent/5 p-4"
         >
           <p className="text-sm font-medium text-ink">
-            選択中：{picked.date.replace(/-/g, "/")}　{picked.time}〜
+            選択中：{formatLongDate(picked.date)}　{picked.time}〜
             <button
               type="button"
               onClick={() => setPicked(null)}
@@ -361,6 +426,87 @@ export function PublicBookingForm({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 枠限定: 日付ごとに枠をボタンで並べる。 */
+function SlotList({
+  days,
+  slotCapacity,
+  picked,
+  onPick,
+}: {
+  days: AvailabilityDay[];
+  slotCapacity: number | null;
+  picked: { date: string; time: string } | null;
+  onPick: (date: string, time: string) => void;
+}) {
+  const anyFree = days.some((d) => Object.values(d.avail).some(Boolean));
+  return (
+    <div className="space-y-4 p-3">
+      {!anyFree && (
+        <p className="rounded-lg bg-base px-3 py-2 text-center text-xs text-muted">
+          この期間の枠はすべて満席です。
+        </p>
+      )}
+      {days.map((d) => (
+        <div key={d.date}>
+          <p
+            className={`mb-2 text-sm font-medium ${
+              d.weekend === 0
+                ? "text-danger"
+                : d.weekend === 6
+                  ? "text-info"
+                  : "text-ink"
+            }`}
+          >
+            {formatLongDate(d.date)}
+          </p>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {Object.keys(d.avail)
+              .sort()
+              .map((t) => {
+                const free = d.avail[t];
+                const isPicked = picked?.date === d.date && picked?.time === t;
+                const left = d.remaining?.[t];
+                if (!free) {
+                  return (
+                    <div
+                      key={t}
+                      className="flex h-14 flex-col items-center justify-center rounded-xl border border-line bg-base/60 text-sm tabular-nums text-faint"
+                    >
+                      {t}〜
+                      <span className="text-[10px]">満席</span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => onPick(d.date, t)}
+                    aria-label={`${formatLongDate(d.date)} ${t} 予約可能`}
+                    className={`flex h-14 flex-col items-center justify-center rounded-xl border text-sm font-semibold tabular-nums transition-colors ${
+                      isPicked
+                        ? "border-danger bg-danger text-white"
+                        : "border-danger/40 text-danger hover:bg-danger/10"
+                    }`}
+                  >
+                    {t}〜
+                    <span className="text-[10px] font-normal">
+                      {isPicked
+                        ? "選択中"
+                        : slotCapacity != null && slotCapacity > 1 && left != null
+                          ? `残り${left}`
+                          : "◎ 空きあり"}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
