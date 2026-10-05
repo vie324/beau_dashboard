@@ -1,4 +1,16 @@
 import { db } from "@/helper/lib/db";
+import { getBookingScheduleSupport } from "@/helper/lib/schemaSupport";
+import {
+  BOOKING_LINK_COLUMNS,
+  liveLinkBookingWhere,
+} from "@/feature/booking-link/lib/linkDb";
+import { toLocalDateString } from "@/helper/utils/time";
+import {
+  parseSchedule,
+  scheduleState,
+  type LinkSchedule,
+  type ScheduleState,
+} from "@/feature/booking-link/lib/schedule";
 
 export type BookingLinkRow = {
   id: number;
@@ -15,6 +27,12 @@ export type BookingLinkRow = {
   allowedMenuIds: number[];
   reminderEnabled: boolean;
   reminderHoursBefore: number;
+  /** 受付する日時の制限（DDL 未適用なら常に制限なし） */
+  schedule: LinkSchedule;
+  /** このリンク経由の予約件数（キャンセル等を除く） */
+  bookedCount: number;
+  /** 受付の状態（受付期間・受付日の残り・先着の定員から判定。公開/停止は isActive） */
+  state: ScheduleState;
 };
 
 function parseMenuIds(raw: string | null): number[] {
@@ -50,9 +68,11 @@ function parseReminder(raw: string | null): {
 export async function getBookingLinks(
   brandId: number,
 ): Promise<BookingLinkRow[]> {
+  const withSchedule = await getBookingScheduleSupport();
   const links = await db.bookingLink.findMany({
     where: { brandId, deletedAt: null },
     orderBy: { id: "asc" },
+    select: { ...BOOKING_LINK_COLUMNS, schedule: withSchedule },
   });
 
   const shopIds = [
@@ -68,8 +88,24 @@ export async function getBookingLinks(
     : [];
   const shopName = new Map(shops.map((s) => [s.id, s.name]));
 
+  const counts = links.length
+    ? await db.appointment.groupBy({
+        by: ["bookingLinkId"],
+        where: liveLinkBookingWhere({ in: links.map((l) => l.id) }),
+        _count: { _all: true },
+      })
+    : [];
+  const bookedCount = new Map(
+    counts.map((c) => [c.bookingLinkId, c._count._all]),
+  );
+
+  const nowMs = Date.now();
+  const today = toLocalDateString(new Date(nowMs));
+
   return links.map((l) => {
     const reminder = parseReminder(l.reminderSettings);
+    const schedule = parseSchedule(withSchedule ? l.schedule : null);
+    const booked = bookedCount.get(l.id) ?? 0;
     return {
       id: l.id,
       slug: l.slug,
@@ -85,6 +121,9 @@ export async function getBookingLinks(
       allowedMenuIds: parseMenuIds(l.allowedMenuIds),
       reminderEnabled: reminder.enabled,
       reminderHoursBefore: reminder.hoursBefore,
+      schedule,
+      bookedCount: booked,
+      state: scheduleState(schedule, { today, nowMs, bookedCount: booked }),
     };
   });
 }

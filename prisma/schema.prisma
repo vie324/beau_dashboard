@@ -325,6 +325,10 @@ model BookingLink {
   allowedMenuIds        String?
   // JSON (TEXT): reminder settings, e.g. {"enabled":true,"hoursBefore":24}
   reminderSettings      String?
+  // JSON (TEXT): 受付する日時の制限（日付限定・期間限定・枠限定・受付期間・定員）。
+  // null = 制限なし（営業日ならいつでも）。形式は feature/booking-link/lib/schedule.ts 参照。
+  // e.g. {"mode":"slots","slots":[{"date":"2026-10-21","time":"14:15"},{"date":"2026-10-21","time":"16:15"}],"slotCapacity":1}
+  schedule              String?
   createdAt             DateTime      @default(now())
   deletedAt             DateTime?
   brand                 Brand         @relation(fields: [brandId], references: [id])

@@ -273,3 +273,9 @@ CREATE TABLE IF NOT EXISTS "Notification" (
   "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS "Notification_shopId_createdAt_idx" ON "Notification"("shopId", "createdAt");
+
+-- 2026-10: 予約リンクの受付日時の制限（日付限定・期間限定・枠限定・受付期間・定員）
+-- BookingLink.schedule に JSON (TEXT) で保存する。NULL = 制限なし（従来どおり）なので、
+-- 適用しただけでは既存リンクの挙動は変わらない。
+-- 未適用のあいだは予約リンク画面の「受付する日時」が無効になる（公開ページは従来どおり動く）。
+ALTER TABLE "BookingLink" ADD COLUMN IF NOT EXISTS "schedule" TEXT;

@@ -1,4 +1,11 @@
 import { db } from "@/helper/lib/db";
+import { toLocalDateString } from "@/helper/utils/time";
+import {
+  findPublicLink,
+  getLinkStatus,
+  type LinkStatus,
+} from "@/feature/booking-link/lib/linkDb";
+import { publicScheduleNotices } from "@/feature/booking-link/lib/schedule";
 
 export type PublicBookingData = {
   link: {
@@ -8,7 +15,13 @@ export type PublicBookingData = {
     description: string | null;
     requireStaffSelection: boolean;
     intervalMin: number;
+    /** grid = 週間の ◎/× 表、slots = 日付ごとの枠ボタン（枠限定） */
+    layout: "grid" | "slots";
   };
+  /** 受付状況。open 以外は message を表示してフォームは出さない */
+  status: Pick<LinkStatus, "state" | "message">;
+  /** お客様向けの案内（受付できる期間・締切・先着 等）。制限なしなら空 */
+  notices: string[];
   shops: { id: number; name: string }[];
   menus: {
     id: number;
@@ -35,10 +48,36 @@ function parseMenuIds(raw: string | null): number[] {
 export async function getBookingLinkBySlug(
   slug: string,
 ): Promise<PublicBookingData | null> {
-  const link = await db.bookingLink.findFirst({
-    where: { slug, isActive: true, deletedAt: null },
-  });
+  const link = await findPublicLink(slug);
   if (!link) return null;
+
+  const nowMs = Date.now();
+  const status = await getLinkStatus(link, nowMs);
+  const base = {
+    link: {
+      id: link.id,
+      slug: link.slug,
+      name: link.name,
+      description: link.description,
+      requireStaffSelection: link.requireStaffSelection,
+      intervalMin: link.intervalMin,
+      layout:
+        link.schedule.mode === "slots" ? ("slots" as const) : ("grid" as const),
+    },
+    status: { state: status.state, message: status.message },
+    notices:
+      status.state === "open"
+        ? publicScheduleNotices(
+            link.schedule,
+            toLocalDateString(new Date(nowMs)),
+            { remaining: status.remaining },
+          )
+        : [],
+  };
+  // 受付していないときはフォームを出さないので、メニュー等は読まない。
+  if (status.state !== "open") {
+    return { ...base, shops: [], menus: [], staffsByShop: {} };
+  }
 
   // Resolve shops: a fixed shop, or every shop in the brand.
   const shops = await db.shop.findMany({
@@ -87,14 +126,7 @@ export async function getBookingLinkBySlug(
   }
 
   return {
-    link: {
-      id: link.id,
-      slug: link.slug,
-      name: link.name,
-      description: link.description,
-      requireStaffSelection: link.requireStaffSelection,
-      intervalMin: link.intervalMin,
-    },
+    ...base,
     shops,
     menus: menus.map((m) => ({
       id: m.id,

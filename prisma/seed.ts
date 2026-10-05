@@ -22,6 +22,13 @@ function plus(d: Date, min: number): Date {
   return new Date(d.getTime() + min * 60_000);
 }
 
+/** "YYYY-MM-DD" を n 日ずらす。 */
+function shiftDays(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+}
+
 async function main() {
   // Idempotent: if the DB already has data (e.g. a redeploy on Vercel),
   // skip seeding so real reservations created in the app are preserved.
@@ -273,6 +280,31 @@ async function main() {
 
   // Appointments for today (Ginza)
   const today = todayJst();
+
+  // 枠限定リンクの見本: 2週間後の 14:15〜 / 16:15〜 の2枠だけ（各1件、前日 23:59 締切）
+  const eventDay = shiftDays(today, 14);
+  await db.bookingLink.create({
+    data: {
+      brandId: brand.id,
+      shopId: ginza.id,
+      slug: "trial-2slots",
+      name: "体験会（2枠限定）",
+      description: "銀座本店の体験会です。先着2名様、各回1名様限定。",
+      isActive: true,
+      requireStaffSelection: false,
+      allowedMenuIds: JSON.stringify([menus[0].id]),
+      reminderSettings: JSON.stringify({ enabled: false, hoursBefore: 24 }),
+      schedule: JSON.stringify({
+        mode: "slots",
+        slots: [
+          { date: eventDay, time: "14:15" },
+          { date: eventDay, time: "16:15" },
+        ],
+        slotCapacity: 1,
+        closeAt: `${shiftDays(eventDay, -1)}T23:59`,
+      }),
+    },
+  });
   const a1Start = jstAt(today, "10:00");
   const a2Start = jstAt(today, "11:30");
   const a3Start = jstAt(today, "14:00");
