@@ -1,4 +1,5 @@
 import { db } from "@/helper/lib/db";
+import { capableStaffIds } from "@/helper/utils/menuStaff";
 import { toLocalDateString } from "@/helper/utils/time";
 import {
   findPublicLink,
@@ -28,9 +29,14 @@ export type PublicBookingData = {
     name: string;
     durationMin: number;
     price: number;
-    // 対応スタッフのID（空 = 全スタッフ対応）。店舗ごとの絞り込みは
-    // helper/utils/menuStaff の capableStaffIds で行う。
-    staffIds: number[];
+    // メニューの店舗（null = 全店舗共通）。店舗を選べるリンクでは、選んだ店舗の
+    // メニューだけを出すのに使う。
+    shopId: number | null;
+    // スタッフが必要なメニューか（false = 設備のみ。指名は使わない）
+    requiresStaff: boolean;
+    // 店舗ごとの「このメニューを担当できる予約可能スタッフ」のID（指名必須のリンクのみ）。
+    // 対応スタッフの判定は予約登録と同じ基準でサーバー側で済ませておく。
+    capableStaffIdsByShop: Record<number, number[]>;
   }[];
   staffsByShop: Record<number, { id: number; name: string }[]>;
 };
@@ -105,23 +111,26 @@ export async function getBookingLinkBySlug(
       name: true,
       durationMin: true,
       price: true,
+      shopId: true,
+      requiresStaff: true,
       staffLinks: { select: { staffId: true } },
     },
   });
 
   const staffsByShop: Record<number, { id: number; name: string }[]> = {};
+  // 対応スタッフの制限は在籍スタッフ全員（予約受付の対象外も含む）で判定する
+  const allStaffIdsByShop: Record<number, number[]> = {};
   if (link.requireStaffSelection && shopIds.length) {
     const staffs = await db.staff.findMany({
-      where: {
-        shopId: { in: shopIds },
-        deletedAt: null,
-        isBookable: true,
-      },
+      where: { shopId: { in: shopIds }, deletedAt: null },
       orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
-      select: { id: true, name: true, shopId: true },
+      select: { id: true, name: true, shopId: true, isBookable: true },
     });
     for (const s of staffs) {
-      (staffsByShop[s.shopId] ??= []).push({ id: s.id, name: s.name });
+      (allStaffIdsByShop[s.shopId] ??= []).push(s.id);
+      if (s.isBookable) {
+        (staffsByShop[s.shopId] ??= []).push({ id: s.id, name: s.name });
+      }
     }
   }
 
@@ -133,7 +142,22 @@ export async function getBookingLinkBySlug(
       name: m.name,
       durationMin: m.durationMin,
       price: m.price,
-      staffIds: m.staffLinks.map((l) => l.staffId),
+      shopId: m.shopId,
+      requiresStaff: m.requiresStaff,
+      capableStaffIdsByShop: Object.fromEntries(
+        shopIds.map((sid) => {
+          const capable = new Set(
+            capableStaffIds(
+              allStaffIdsByShop[sid] ?? [],
+              m.staffLinks.map((l) => l.staffId),
+            ),
+          );
+          return [
+            sid,
+            (staffsByShop[sid] ?? []).filter((x) => capable.has(x.id)).map((x) => x.id),
+          ];
+        }),
+      ),
     })),
     staffsByShop,
   };

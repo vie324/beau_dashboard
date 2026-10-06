@@ -49,7 +49,7 @@ export function BookingLinkList({
 }: {
   links: BookingLinkRow[];
   shops: { id: number; name: string }[];
-  menus: { id: number; name: string }[];
+  menus: { id: number; name: string; shopId: number | null }[];
   scheduleSupported: boolean;
   /** 今日（JST）。サーバーで決めて渡す（日付の表示を SSR と揃えるため） */
   today: string;
@@ -89,9 +89,15 @@ export function BookingLinkList({
     setTimeout(() => setCopied((c) => (c === id ? null : c)), 1500);
   };
 
+  const total = links.length;
+  const activeCount = links.filter((l) => l.isActive).length;
+
   return (
     <>
-      <div className="mb-5 flex justify-end">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted">
+          {total > 0 ? `全${total}件・公開中 ${activeCount}件` : ""}
+        </p>
         <Button size="sm" onClick={() => setModal({ mode: "create" })}>
           ＋ 新規リンク
         </Button>
@@ -103,161 +109,155 @@ export function BookingLinkList({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-panel">
-        <table className="w-full min-w-[980px] text-sm">
-          <thead>
-            <tr className="whitespace-nowrap border-b border-line text-left text-xs uppercase tracking-wider text-faint">
-              <th className="px-4 py-3 font-medium">リンク名</th>
-              <th className="px-4 py-3 font-medium">公開URL</th>
-              <th className="px-4 py-3 font-medium">対象</th>
-              <th className="px-4 py-3 font-medium">受付する日時</th>
-              <th className="px-4 py-3 font-medium">状態</th>
-              <th className="px-4 py-3 font-medium">リマインド</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {links.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-faint">
-                  予約リンクがありません。「新規リンク」から作成してください。
-                </td>
-              </tr>
-            )}
-            {links.map((l) => {
-              const capacity = bookingCapacity(l.schedule);
-              const stateBadge = l.state === "open" ? null : STATE_BADGE[l.state];
-              return (
-                <tr
-                  key={l.id}
-                  className="border-b border-line/70 align-top last:border-b-0 hover:bg-elevated/40"
-                >
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-ink">{l.name}</div>
-                    {l.description && (
-                      <div className="mt-0.5 max-w-xs truncate text-xs text-faint">
-                        {l.description}
-                      </div>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <code className="rounded bg-base px-2 py-1 text-xs text-muted">
-                        /book/{l.slug}
-                      </code>
-                      <button
-                        onClick={() => copy(l.id, l.slug)}
-                        className="text-xs text-accent hover:text-accent-hover"
-                      >
-                        {copied === l.id ? "コピー済" : "コピー"}
-                      </button>
-                      <a
-                        href={`/book/${l.slug}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-muted hover:text-ink"
-                      >
-                        開く ↗
-                      </a>
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {l.shopName ? (
-                      <Badge className="border-info/30 bg-info/10 text-info">
-                        {l.shopName}
-                      </Badge>
-                    ) : (
-                      <Badge className="border-line bg-base text-muted">
-                        ブランド共通
-                      </Badge>
-                    )}
-                  </td>
-                  <td className="min-w-[220px] max-w-[300px] px-4 py-3">
-                    {isUnrestricted(l.schedule) ? (
-                      <span className="text-xs text-faint">営業日はいつでも</span>
-                    ) : (
-                      <div className="space-y-1">
-                        <Badge className="border-accent/40 bg-accent/10 text-accent-hover">
-                          {SCHEDULE_MODE_LABEL[l.schedule.mode]}
-                        </Badge>
-                        <ul className="space-y-0.5 text-xs text-muted">
-                          {describeSchedule(l.schedule, today).map((line) => (
-                            <li key={line}>{line}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div className="mt-1 text-[11px] text-faint">
-                      予約 {l.bookedCount}件
-                      {capacity != null && ` / ${capacity}件`}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <div className="flex flex-col items-start gap-1">
-                      <button
-                        disabled={pending}
-                        className="disabled:opacity-50"
-                        onClick={() =>
-                          run(() => toggleBookingLink(l.id, !l.isActive))
-                        }
-                      >
-                        {l.isActive ? (
-                          <Badge className="border-ok/30 bg-ok/15 text-ok">
-                            公開中
-                          </Badge>
-                        ) : (
-                          <Badge className="border-line bg-base text-faint">
-                            停止中
-                          </Badge>
-                        )}
-                      </button>
+      {links.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-line bg-surface px-6 py-14 text-center">
+          <p className="text-sm font-medium text-ink">予約リンクがありません</p>
+          <p className="mt-1 text-xs text-faint">
+            「＋ 新規リンク」から、公開予約ページを作成してください。
+          </p>
+        </div>
+      ) : (
+        <ul className="grid gap-4 lg:grid-cols-2">
+          {links.map((l) => {
+            const capacity = bookingCapacity(l.schedule);
+            const stateBadge = l.state === "open" ? null : STATE_BADGE[l.state];
+            const restricted = !isUnrestricted(l.schedule);
+            return (
+              <li
+                key={l.id}
+                className={`flex flex-col rounded-2xl border bg-surface shadow-panel transition-colors ${
+                  l.isActive ? "border-line" : "border-line/70 opacity-80"
+                }`}
+              >
+                <div className="flex items-start gap-3 px-5 pt-5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <h3 className="truncate text-[15px] font-semibold text-ink">
+                        {l.name}
+                      </h3>
                       {l.isActive && stateBadge && (
                         <Badge className={stateBadge.className}>
                           {stateBadge.label}
                         </Badge>
                       )}
                     </div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-muted">
-                    {l.reminderEnabled
-                      ? `${l.reminderHoursBefore}時間前`
-                      : "—"}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setModal({ mode: "edit", row: l })}
-                      >
-                        編集
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setModal({ mode: "copy", row: l })}
-                      >
-                        複製
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={pending}
-                        onClick={() => {
-                          if (!confirm(`「${l.name}」を削除しますか？`)) return;
-                          run(() => deleteBookingLink(l.id));
-                        }}
-                      >
-                        {pending ? "削除中…" : "削除"}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    {l.description && (
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-faint">
+                        {l.description}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    disabled={pending}
+                    title={l.isActive ? "押すと公開を停止します" : "押すと公開します"}
+                    className="shrink-0 disabled:opacity-50"
+                    onClick={() => run(() => toggleBookingLink(l.id, !l.isActive))}
+                  >
+                    {l.isActive ? (
+                      <Badge className="border-ok/30 bg-ok/15 text-ok">
+                        <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-ok" />
+                        公開中
+                      </Badge>
+                    ) : (
+                      <Badge className="border-line bg-base text-faint">
+                        <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-faint" />
+                        停止中
+                      </Badge>
+                    )}
+                  </button>
+                </div>
+
+                <div className="mx-5 mt-3 flex items-center gap-2 rounded-xl border border-line/70 bg-base/60 px-3 py-2">
+                  <code className="min-w-0 flex-1 truncate text-xs text-muted">
+                    /book/{l.slug}
+                  </code>
+                  <button
+                    onClick={() => copy(l.id, l.slug)}
+                    className="shrink-0 text-xs font-medium text-accent-hover hover:text-ink"
+                  >
+                    {copied === l.id ? "コピー済 ✓" : "コピー"}
+                  </button>
+                  <a
+                    href={`/book/${l.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-xs text-muted hover:text-ink"
+                  >
+                    開く ↗
+                  </a>
+                </div>
+
+                <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-5 py-4 text-xs">
+                  <dt className="text-faint">対象</dt>
+                  <dd>
+                    {l.shopName ? (
+                      <Badge className="border-info/30 bg-info/10 text-info">
+                        {l.shopName}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted">ブランド共通</span>
+                    )}
+                  </dd>
+                  <dt className="text-faint">受付する日時</dt>
+                  <dd className="min-w-0">
+                    {restricted ? (
+                      <div className="space-y-1">
+                        <Badge className="border-accent/40 bg-accent/10 text-accent-hover">
+                          {SCHEDULE_MODE_LABEL[l.schedule.mode]}
+                        </Badge>
+                        <ul className="space-y-0.5 text-muted">
+                          {describeSchedule(l.schedule, today).map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <span className="text-muted">営業日はいつでも</span>
+                    )}
+                  </dd>
+                  <dt className="text-faint">予約</dt>
+                  <dd className="text-muted">
+                    <span className="font-semibold tabular-nums text-ink">{l.bookedCount}</span>件
+                    {capacity != null && ` / ${capacity}件`}
+                  </dd>
+                  <dt className="text-faint">リマインド</dt>
+                  <dd className="text-muted">
+                    {l.reminderEnabled ? `${l.reminderHoursBefore}時間前` : "—"}
+                  </dd>
+                </dl>
+
+                <div className="flex justify-end gap-2 border-t border-line/70 px-5 py-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setModal({ mode: "edit", row: l })}
+                  >
+                    編集
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setModal({ mode: "copy", row: l })}
+                  >
+                    複製
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={pending}
+                    onClick={() => {
+                      if (!confirm(`「${l.name}」を削除しますか？`)) return;
+                      run(() => deleteBookingLink(l.id));
+                    }}
+                  >
+                    削除
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {modal && (
         <BookingLinkForm

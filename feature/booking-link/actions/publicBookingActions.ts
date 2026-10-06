@@ -11,7 +11,6 @@ import { resolveHoursForDate } from "@/helper/utils/shopHours";
 import { staffWorksOn } from "@/helper/utils/staffWork";
 import { FREEING_STATUSES } from "@/helper/utils/status";
 import {
-  activeMenuStaffIds,
   capableStaffIds,
   canStaffHandleMenu,
 } from "@/helper/utils/menuStaff";
@@ -145,16 +144,19 @@ export async function getPublicAvailability(input: {
   });
   if (!menu) return { ok: false, error: "メニューの指定が正しくありません" };
 
-  const allStaff = await db.staff.findMany({
-    where: { shopId: shop.id, deletedAt: null, isBookable: true },
-    select: { id: true, spotMode: true, workDates: true },
+  // 「対応スタッフ」の制限は在籍スタッフ全員（予約受付の対象外も含む）を基準に判定する。
+  // 予約可能なスタッフだけで判定すると、対象外の人だけに限定したメニューが
+  // 「制限なし」扱いになり、全員に枠が出てしまうため。候補は予約可能な人だけ。
+  const shopStaffAll = await db.staff.findMany({
+    where: { shopId: shop.id, deletedAt: null },
+    select: { id: true, spotMode: true, workDates: true, isBookable: true },
   });
-  // このメニューを担当できるスタッフだけを候補にする（設定「対応スタッフ」）。
+  const allStaff = shopStaffAll.filter((s) => s.isBookable);
   // 出勤状況ではなく在籍者全員から求めるので、その日の出勤者によって
   // 「制限なし」への切り替わり方が変わることはない。
   const capable = new Set(
     capableStaffIds(
-      allStaff.map((s) => s.id),
+      shopStaffAll.map((s) => s.id),
       menu.staffLinks.map((l) => l.staffId),
     ),
   );
@@ -480,8 +482,9 @@ export async function submitPublicBooking(
       return { ok: false, error: "休業日のため予約できません" };
     }
     const startMin = hm(input.startTime) ?? -1;
-    const openMin = hm(dh.openTime) ?? 0;
-    const closeMin = hm(dh.closeTime) ?? 24 * 60;
+    // 未設定時の既定（9:00〜21:00）は空き表と合わせる。
+    const openMin = hm(dh.openTime) ?? 9 * 60;
+    const closeMin = hm(dh.closeTime) ?? 21 * 60;
     const bStartMin = hm(dh.breakStart);
     const bEndMin = hm(dh.breakEnd);
     if (startMin < openMin || startMin > closeMin) {
@@ -516,16 +519,29 @@ export async function submitPublicBooking(
   if (menu.requiresStaff) {
     // 「対応スタッフ」の判定に使う、この店舗の予約可能スタッフ一覧。
     // 指名予約・自動割当のどちらでも同じ基準で絞り込む。
-    const shopStaffs = await db.staff.findMany({
-      where: { shopId: shop.id, deletedAt: null, isBookable: true },
+    // 制限の判定は在籍スタッフ全員、割当の候補は予約可能な人だけ（空き表と同じ基準）。
+    const shopStaffAll = await db.staff.findMany({
+      where: { shopId: shop.id, deletedAt: null },
       orderBy: [{ allocateOrder: "asc" }, { id: "asc" }],
-      select: { id: true, spotMode: true, workDates: true },
+      select: { id: true, spotMode: true, workDates: true, isBookable: true },
     });
-    const shopStaffIds = shopStaffs.map((s) => s.id);
+    const shopStaffs = shopStaffAll.filter((s) => s.isBookable);
+    const shopStaffIds = shopStaffAll.map((s) => s.id);
+
+    // 「スタッフ指名を必須にする」リンクは指名なしで受け付けない。
+    if (link.requireStaffSelection && !input.staffId) {
+      return { ok: false, error: "ご希望のスタッフを選んでください" };
+    }
 
     if (input.staffId) {
       const staff = await db.staff.findFirst({
-        where: { id: input.staffId, shopId: shop.id, deletedAt: null },
+        // 予約受付の対象外（isBookable=false）のスタッフは公開ページから指名できない
+        where: {
+          id: input.staffId,
+          shopId: shop.id,
+          deletedAt: null,
+          isBookable: true,
+        },
         select: { id: true, spotMode: true, workDates: true },
       });
       if (!staff)
@@ -549,12 +565,9 @@ export async function submitPublicBooking(
       autoStaffIds = shopStaffs
         .filter((s) => capable.has(s.id) && staffWorksOn(s, input.date))
         .map((s) => s.id);
-      // 対応スタッフを設定しているメニューは、その人が出勤していない日に
-      // 「指名なし」で通してしまうと現場が困る（空き表でも × になっている）。
-      if (
-        autoStaffIds.length === 0 &&
-        activeMenuStaffIds(shopStaffIds, menuStaffIds).length > 0
-      ) {
+      // 担当できるスタッフがその日に1人もいなければ受け付けない（空き表でも × になっている）。
+      // 対応スタッフを設定しているメニューで、その人が出勤していない日も同じ。
+      if (autoStaffIds.length === 0) {
         return {
           ok: false,
           error:

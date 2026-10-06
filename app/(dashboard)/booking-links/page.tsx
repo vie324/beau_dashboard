@@ -21,12 +21,14 @@ export default async function BookingLinksPage() {
   const [links, menus, scheduleSupported] = await Promise.all([
     getBookingLinks(brandId),
     db.menu.findMany({
+      // 公開ページに出せるのは公開メニューだけなので、選択肢もそれに合わせる。
       where: {
         deletedAt: null,
+        isPublic: true,
         OR: [{ shopId: null }, { shopId: { in: shopIds } }],
       },
       orderBy: [{ sortNumber: "asc" }, { id: "asc" }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, shopId: true },
     }),
     getBookingScheduleSupport(),
   ]);
