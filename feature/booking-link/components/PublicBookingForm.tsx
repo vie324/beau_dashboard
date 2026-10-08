@@ -397,7 +397,7 @@ export function PublicBookingForm({
                 ok.layout === "grid" &&
                 ok.times.length === 0 && (
                   <p className="px-3 py-10 text-center text-sm text-faint">
-                    予約可能な時間がありません。営業時間をご確認ください。
+                    この日程には、ご予約いただける時間がありません。
                   </p>
                 )}
               {!loading &&
