@@ -84,6 +84,49 @@ export async function saveBookingLink(
     return { ok: false, error: `slug「${input.slug}」は既に使われています` };
   }
 
+  // 対象店舗はこのブランドの店舗に限る（他ブランド・削除済みだと公開ページが空になる）。
+  if (input.shopId) {
+    const shop = await db.shop.findFirst({
+      where: { id: input.shopId, brandId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!shop) return { ok: false, error: "対象店舗の指定が正しくありません" };
+  }
+
+  // 予約可能メニューは、公開ページで実際に出せるもの（未削除・公開・対象店舗で使える）
+  // だけを保存する。削除済みメニューの ID が残ると、全部外したつもりでも
+  // 「限定あり」のままになり、公開ページのメニューが空になってしまうため。
+  let allowedMenuIds: number[] = [];
+  if (input.allowedMenuIds.length) {
+    const brandShopIds = (
+      await db.shop.findMany({
+        where: { brandId, deletedAt: null },
+        select: { id: true },
+      })
+    ).map((s) => s.id);
+    const usable = await db.menu.findMany({
+      where: {
+        id: { in: input.allowedMenuIds },
+        deletedAt: null,
+        isPublic: true,
+        OR: [
+          { shopId: null },
+          { shopId: { in: input.shopId ? [input.shopId] : brandShopIds } },
+        ],
+      },
+      select: { id: true },
+    });
+    const ok = new Set(usable.map((m) => m.id));
+    allowedMenuIds = [...new Set(input.allowedMenuIds)].filter((id) => ok.has(id));
+    if (allowedMenuIds.length === 0) {
+      return {
+        ok: false,
+        error:
+          "選んだメニューはこのリンクでは予約できません（非公開・削除済み・他店舗のメニュー）。選び直すか、すべて外して「公開メニューすべて」にしてください",
+      };
+    }
+  }
+
   // 受付する日時。列が無い（DDL 未適用）のに制限を保存しようとしたら、黙って
   // 捨てると「限定のつもりのリンクが無制限で公開される」ので保存自体を止める。
   const scheduleSupported = await getBookingScheduleSupport();
@@ -112,7 +155,7 @@ export async function saveBookingLink(
     allowOverflowAtBreak: input.allowOverflowAtBreak,
     allowOverflowAtClose: input.allowOverflowAtClose,
     intervalMin: input.intervalMin,
-    allowedMenuIds: JSON.stringify(input.allowedMenuIds),
+    allowedMenuIds: JSON.stringify(allowedMenuIds),
     reminderSettings: JSON.stringify({
       enabled: input.reminderEnabled,
       hoursBefore: input.reminderHoursBefore,

@@ -55,7 +55,8 @@ export function BookingLinkForm({
   open: boolean;
   onClose: () => void;
   shops: { id: number; name: string }[];
-  menus: { id: number; name: string }[];
+  /** 公開メニュー（shopId = null は全店舗共通） */
+  menus: { id: number; name: string; shopId: number | null }[];
   initial?: BookingLinkRow | null;
   /** true = initial の内容を元に新しいリンクを作る（複製） */
   duplicate?: boolean;
@@ -100,6 +101,24 @@ export function BookingLinkForm({
     }));
 
   const slotMode = form.schedule.mode === "slots";
+  const shopName = useMemo(
+    () => new Map(shops.map((s) => [s.id, s.name])),
+    [shops],
+  );
+  // 対象店舗を絞ったリンクでは、その店舗で使えるメニュー（共通 + その店舗限定）だけを出す。
+  const visibleMenus = useMemo(
+    () =>
+      form.shopId === ""
+        ? menus
+        : menus.filter(
+            (m) => m.shopId == null || m.shopId === Number(form.shopId),
+          ),
+    [menus, form.shopId],
+  );
+  // 削除済み・非公開・他店舗のメニューは選択できないので、保存対象からも外す。
+  const selectedMenuIds = form.allowedMenuIds.filter((id) =>
+    visibleMenus.some((m) => m.id === id),
+  );
 
   function submit() {
     setError(null);
@@ -114,7 +133,7 @@ export function BookingLinkForm({
       allowOverflowAtBreak: form.allowOverflowAtBreak,
       allowOverflowAtClose: form.allowOverflowAtClose,
       intervalMin: form.intervalMin,
-      allowedMenuIds: form.allowedMenuIds,
+      allowedMenuIds: selectedMenuIds,
       reminderEnabled: form.reminderEnabled,
       reminderHoursBefore: form.reminderHoursBefore,
       // DDL 未適用のあいだは送らない（サーバー側は「変更しない」として扱う）
@@ -138,7 +157,7 @@ export function BookingLinkForm({
     fd.set("allowOverflowAtBreak", String(form.allowOverflowAtBreak));
     fd.set("allowOverflowAtClose", String(form.allowOverflowAtClose));
     fd.set("intervalMin", String(form.intervalMin));
-    fd.set("allowedMenuIds", JSON.stringify(form.allowedMenuIds));
+    fd.set("allowedMenuIds", JSON.stringify(selectedMenuIds));
     fd.set("reminderEnabled", String(form.reminderEnabled));
     fd.set("reminderHoursBefore", String(form.reminderHoursBefore));
     if (parsed.data.schedule) {
@@ -246,28 +265,47 @@ export function BookingLinkForm({
           </div>
 
           <div>
-            <Label>予約可能メニュー</Label>
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-line bg-base p-3">
-              {menus.length === 0 && (
-                <p className="text-xs text-faint">メニューがありません</p>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wider text-muted">
+                予約可能メニュー
+              </span>
+              <span className="text-[11px] text-faint">
+                {selectedMenuIds.length
+                  ? `${selectedMenuIds.length}件を選択中`
+                  : "公開メニューすべて"}
+              </span>
+            </div>
+            <div className="max-h-56 divide-y divide-line/60 overflow-y-auto rounded-xl border border-line bg-surface">
+              {visibleMenus.length === 0 && (
+                <p className="px-3 py-3 text-xs text-faint">公開メニューがありません</p>
               )}
-              {menus.map((m) => (
-                <label
-                  key={m.id}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-ink"
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.allowedMenuIds.includes(m.id)}
-                    onChange={() => toggleMenu(m.id)}
-                    className="accent-accent"
-                  />
-                  {m.name}
-                </label>
-              ))}
+              {visibleMenus.map((m) => {
+                const on = selectedMenuIds.includes(m.id);
+                return (
+                  <label
+                    key={m.id}
+                    className={`flex cursor-pointer items-center gap-2.5 px-3 py-2.5 text-sm transition-colors ${
+                      on ? "bg-accent-soft/50 text-ink" : "text-ink hover:bg-elevated/40"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => toggleMenu(m.id)}
+                      className="h-4 w-4 accent-accent"
+                    />
+                    <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                    {m.shopId != null && (
+                      <span className="shrink-0 rounded-md border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
+                        {shopName.get(m.shopId) ?? "店舗"}のみ
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
             </div>
             <p className="mt-1 text-[11px] text-faint">
-              未選択の場合は公開メニューすべてが予約可能になります
+              未選択の場合は公開メニューすべてが予約可能になります（非公開メニューは「設定 → メニュー」で公開にすると選べます）
             </p>
           </div>
         </Section>
