@@ -280,6 +280,17 @@ export function addDaysYmd(ymd: string, n: number): string {
   return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
 }
 
+/**
+ * 開始時刻 "HH:mm" に施術時間（分）を足した終了時刻。予約の終了は常に
+ * 「開始 + メニューの施術時間」なので、画面の表示もこれで揃える。日をまたぐと "翌0:30"。
+ */
+export function endTimeOf(time: string, durationMin: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + Math.max(0, durationMin);
+  const hhmm = `${pad2(Math.floor(total / 60) % 24)}:${pad2(total % 60)}`;
+  return total >= 24 * 60 ? `翌${hhmm}` : hhmm;
+}
+
 /** 日付＋開始時刻（JST）の絶対時刻（ms）。 */
 export function slotStartMs(date: string, time: string): number {
   return jstDateTimeToDate(date, time).getTime();
@@ -642,7 +653,11 @@ export function describeSchedule(s: LinkSchedule, today: string): string[] {
     out.push(`毎週 ${dowsLabel(s.dows)}`);
   }
   if (s.mode !== "slots" && (s.timeFrom || s.timeTo)) {
-    out.push(`${timeWindowLabel(s)} 開始`);
+    out.push(
+      s.timeFrom && s.timeFrom === s.timeTo
+        ? `${s.timeFrom} 開始のみ`
+        : `${timeWindowLabel(s)} 開始`,
+    );
   }
   if (s.slotCapacity != null) out.push(`各枠 ${s.slotCapacity}件まで`);
   if (s.maxBookings != null) out.push(`先着 ${s.maxBookings}件`);
@@ -676,7 +691,11 @@ export function publicScheduleNotices(
     out.push(`ご予約いただける曜日：${dowsLabel(s.dows)}`);
   }
   if (s.mode !== "slots" && (s.timeFrom || s.timeTo)) {
-    out.push(`ご予約いただける時間：${timeWindowLabel(s)} の開始`);
+    out.push(
+      s.timeFrom && s.timeFrom === s.timeTo
+        ? `ご予約いただける時間：${s.timeFrom} 開始`
+        : `ご予約いただける時間：${timeWindowLabel(s)} の開始`,
+    );
   }
   if (s.closeAt) {
     out.push(`受付締切：${formatLongDateTime(s.closeAt, today)}`);

@@ -304,6 +304,10 @@ function SlotsEditor({ value, onChange, today }: EditorProps) {
                 .join("・")}${draftDates.length > 3 ? " ほか" : ""}）すべてに、この時刻の枠を追加します。`
             : "時刻ごとに「枠を追加」を押します。例: 21日を選んで 14:15 → 追加、16:15 → 追加。"}
         </p>
+        <p className="text-[11px] text-faint">
+          終了時刻は、お客様が選ぶメニューの施術時間で決まります（例: 14:15開始・105分のメニューなら16:00終了）。
+          決まった時間で終わらせたいときは、その長さのメニューを「設定 → メニュー」で作り、上の「予約可能メニュー」で選んでください。
+        </p>
         {hint && <p className="text-xs text-danger">{hint}</p>}
       </div>
 

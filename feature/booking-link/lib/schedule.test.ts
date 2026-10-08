@@ -4,6 +4,7 @@ import {
   addSlots,
   describeSchedule,
   emptySchedule,
+  endTimeOf,
   formatDuration,
   groupSlotsByDate,
   hasUpcomingDates,
@@ -371,6 +372,18 @@ describe("表示用の文言", () => {
     ]);
   });
 
+  it("開始時刻を1つに絞った時間帯（毎日14:15のみ）", () => {
+    const s = schedule({ timeFrom: "14:15", timeTo: "14:15", slotCapacity: 1 });
+    expect(describeSchedule(s, TODAY)).toEqual([
+      "営業日はいつでも",
+      "14:15 開始のみ",
+      "各枠 1件まで",
+    ]);
+    expect(publicScheduleNotices(s, TODAY)).toEqual([
+      "ご予約いただける時間：14:15 開始",
+    ]);
+  });
+
   it("お客様向けの案内", () => {
     expect(
       publicScheduleNotices(
@@ -388,6 +401,12 @@ describe("表示用の文言", () => {
       "受付締切：10月20日(火) 23:59",
       "先着5名様限定（残り3名様）",
     ]);
+  });
+
+  it("終了時刻 = 開始 + 施術時間（14:15開始・105分なら16:00）", () => {
+    expect(endTimeOf("14:15", 105)).toBe("16:00");
+    expect(endTimeOf("09:50", 15)).toBe("10:05");
+    expect(endTimeOf("23:30", 60)).toBe("翌00:30");
   });
 
   it("時間の表記", () => {

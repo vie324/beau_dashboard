@@ -21,6 +21,7 @@ import {
 import type { PublicBookingData } from "@/feature/booking-link/services/getBookingLinkBySlug";
 import {
   addDaysYmd,
+  endTimeOf,
   formatLongDate,
   formatShortDate,
 } from "@/feature/booking-link/lib/schedule";
@@ -385,6 +386,7 @@ export function PublicBookingForm({
                 <SlotList
                   days={ok.days}
                   slotCapacity={ok.slotCapacity}
+                  durationMin={selectedMenu?.durationMin ?? null}
                   picked={picked}
                   onPick={pick}
                 />
@@ -497,6 +499,7 @@ export function PublicBookingForm({
                     <p className="text-[11px] font-medium text-faint">ご予約内容</p>
                     <p className="mt-0.5 text-base font-semibold text-ink">
                       {formatLongDate(picked.date)}　{picked.time}〜
+                      {selectedMenu && endTimeOf(picked.time, selectedMenu.durationMin)}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-muted">
                       {selectedMenu?.name}
@@ -573,15 +576,20 @@ export function PublicBookingForm({
 function SlotList({
   days,
   slotCapacity,
+  durationMin,
   picked,
   onPick,
 }: {
   days: AvailabilityDay[];
   slotCapacity: number | null;
+  /** 選んだメニューの施術時間。終了時刻（開始 + 施術時間）を枠に出すのに使う */
+  durationMin: number | null;
   picked: { date: string; time: string } | null;
   onPick: (date: string, time: string) => void;
 }) {
   const anyFree = days.some((d) => Object.values(d.avail).some(Boolean));
+  const range = (t: string) =>
+    durationMin != null ? `${t}〜${endTimeOf(t, durationMin)}` : `${t}〜`;
   return (
     <div className="space-y-5 p-4">
       {!anyFree && (
@@ -602,7 +610,7 @@ function SlotList({
           >
             {formatLongDate(d.date)}
           </p>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {Object.keys(d.avail)
               .sort()
               .map((t) => {
@@ -615,7 +623,7 @@ function SlotList({
                       key={t}
                       className="flex h-14 flex-col items-center justify-center rounded-xl border border-line bg-base/60 text-sm tabular-nums text-faint"
                     >
-                      <span className="line-through decoration-faint/50">{t}〜</span>
+                      <span className="line-through decoration-faint/50">{range(t)}</span>
                       <span className="text-[10px]">満席</span>
                     </div>
                   );
@@ -625,14 +633,14 @@ function SlotList({
                     key={t}
                     type="button"
                     onClick={() => onPick(d.date, t)}
-                    aria-label={`${formatLongDate(d.date)} ${t} 予約可能`}
+                    aria-label={`${formatLongDate(d.date)} ${range(t)} 予約可能`}
                     className={`flex h-14 flex-col items-center justify-center rounded-xl border text-sm font-semibold tabular-nums transition-all ${
                       isPicked
                         ? "border-danger bg-danger text-white shadow-sm"
                         : "border-danger/40 bg-surface text-danger hover:-translate-y-px hover:bg-danger/5 hover:shadow-sm"
                     }`}
                   >
-                    {t}〜
+                    {range(t)}
                     <span className="text-[10px] font-normal">
                       {isPicked
                         ? "選択中"
