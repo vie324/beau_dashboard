@@ -13,7 +13,10 @@ import {
   ScheduleLimitsEditor,
   ScheduleSummary,
 } from "@/feature/booking-link/components/ScheduleEditor";
-import { emptySchedule } from "@/feature/booking-link/lib/schedule";
+import {
+  emptySchedule,
+  ignoresShopHours,
+} from "@/feature/booking-link/lib/schedule";
 import { toLocalDateString } from "@/helper/utils/time";
 
 /** 複製時の slug 案（"<元>-copy"。50文字・末尾英数字の制約に収める）。 */
@@ -101,6 +104,8 @@ export function BookingLinkForm({
     }));
 
   const slotMode = form.schedule.mode === "slots";
+  // 枠限定・時間帯つきの日付限定は、営業時間ではなくリンクの設定で受付時間が決まる。
+  const ownHours = ignoresShopHours(form.schedule);
   const shopName = useMemo(
     () => new Map(shops.map((s) => [s.id, s.name])),
     [shops],
@@ -352,44 +357,50 @@ export function BookingLinkForm({
                 </p>
               </div>
 
-              <div className="space-y-2 rounded-xl border border-line bg-base p-3">
-                <p className="text-xs font-medium text-muted">最終受付の挙動</p>
-                <label className="flex items-start gap-2 text-sm text-ink">
-                  <input
-                    type="checkbox"
-                    checked={form.allowOverflowAtBreak}
-                    onChange={(e) =>
-                      set("allowOverflowAtBreak", e.target.checked)
-                    }
-                    className="mt-0.5 accent-accent"
-                  />
-                  <span>
-                    休憩時間にまたがる予約を許可する
-                    <span className="ml-1 block text-[11px] text-faint">
-                      施術が休憩開始時刻を越えても開始時刻が休憩前なら予約可
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm text-ink">
-                  <input
-                    type="checkbox"
-                    checked={form.allowOverflowAtClose}
-                    onChange={(e) =>
-                      set("allowOverflowAtClose", e.target.checked)
-                    }
-                    className="mt-0.5 accent-accent"
-                  />
-                  <span>
-                    営業終了時刻をまたぐ予約を許可する
-                    <span className="ml-1 block text-[11px] text-faint">
-                      施術が閉店時刻を越えても開始時刻が営業時間内なら予約可
-                    </span>
-                  </span>
-                </label>
+              {ownHours ? (
                 <p className="text-[11px] text-faint">
-                  時間ブロック（スタッフの昼休み等）は常に予約不可です。
+                  ※ 時間帯を指定した日付限定では「最終受付の挙動」は使いません（営業時間・休憩に関係なく、指定した時間帯をそのまま受け付けます）。止めたい時間は予約表の時間ブロックで押さえてください。
                 </p>
-              </div>
+              ) : (
+                <div className="space-y-2 rounded-xl border border-line bg-base p-3">
+                  <p className="text-xs font-medium text-muted">最終受付の挙動</p>
+                  <label className="flex items-start gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={form.allowOverflowAtBreak}
+                      onChange={(e) =>
+                        set("allowOverflowAtBreak", e.target.checked)
+                      }
+                      className="mt-0.5 accent-accent"
+                    />
+                    <span>
+                      休憩時間にまたがる予約を許可する
+                      <span className="ml-1 block text-[11px] text-faint">
+                        施術が休憩開始時刻を越えても開始時刻が休憩前なら予約可
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={form.allowOverflowAtClose}
+                      onChange={(e) =>
+                        set("allowOverflowAtClose", e.target.checked)
+                      }
+                      className="mt-0.5 accent-accent"
+                    />
+                    <span>
+                      営業終了時刻をまたぐ予約を許可する
+                      <span className="ml-1 block text-[11px] text-faint">
+                        施術が閉店時刻を越えても開始時刻が営業時間内なら予約可
+                      </span>
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-faint">
+                    時間ブロック（スタッフの昼休み等）は常に予約不可です。
+                  </p>
+                </div>
+              )}
             </>
           )}
         </Section>

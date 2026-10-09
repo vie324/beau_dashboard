@@ -25,6 +25,7 @@ import {
   lockPublicBooking,
 } from "@/feature/booking-link/lib/linkDb";
 import {
+  dateWindowRange,
   isBeforeDeadline,
   isScheduleSlot,
   leadTimeLabel,
@@ -236,9 +237,11 @@ export async function getPublicAvailability(input: {
   }
 
   // 枠限定: 登録した枠（締切前のもの）をそのまま出す。営業時間は見ない。
+  // 時間帯つきの日付限定: その日の時間帯を時間間隔で刻む。営業時間・休憩・休業日は見ない。
   // それ以外: 各日の営業時間（曜日・日付のオーバーライド込み）を時間間隔で刻み、
   // 時間帯の指定があればその範囲だけにする。行は画面内の日の和集合。
   const perDayHours = page.dates.map((d) => resolveHoursForDate(shop, d));
+  const ownRanges = perDayHours.map((h) => dateWindowRange(schedule, h));
   const slotTimesByDate = new Map<string, string[]>();
   for (const x of openSlots(schedule, nowMs)) {
     const list = slotTimesByDate.get(x.date);
@@ -253,19 +256,25 @@ export async function getPublicAvailability(input: {
       for (const t of slotTimesByDate.get(d) ?? []) timesSet.add(hm(t)!);
     }
   } else {
-    for (const h of perDayHours) {
-      if (h.isClosed) continue;
+    perDayHours.forEach((h, i) => {
+      const own = ownRanges[i];
+      if (own) {
+        for (let m = own.from; m <= own.to; m += interval) timesSet.add(m);
+        return;
+      }
+      if (h.isClosed) return;
       const o = hm(h.openTime) ?? 9 * 60;
       const c = hm(h.closeTime) ?? 21 * 60;
       const from = windowFrom != null && windowFrom > o ? windowFrom : o;
       const to = windowTo != null && windowTo < c ? windowTo : c;
       for (let m = from; m <= to; m += interval) timesSet.add(m);
-    }
+    });
   }
   const times = [...timesSet].sort((a, b) => a - b).map(hmString);
 
   const days: AvailabilityDay[] = page.dates.map((date, i) => {
     const dh = perDayHours[i];
+    const own = ownRanges[i];
     const dayOpen = hm(dh.openTime) ?? 9 * 60;
     const dayClose = hm(dh.closeTime) ?? 21 * 60;
     const bStart = hm(dh.breakStart);
@@ -287,7 +296,10 @@ export async function getPublicAvailability(input: {
       const slotEnd = slotStart + menu.durationMin * 60000;
       // 過去・受付締切を過ぎた枠は NG。
       let ok = isBeforeDeadline(schedule, slotStart, nowMs);
-      if (layout === "grid") {
+      if (own) {
+        // 時間帯つきの日付限定: その日の受付範囲（行は画面内の日の和集合なので日ごとに見る）。
+        if (ok && (tMin < own.from || tMin > own.to)) ok = false;
+      } else if (layout === "grid") {
         // 休業日は全枠 NG。営業日は曜日別の open〜close 範囲外も NG。
         if (ok && dh.isClosed) ok = false;
         if (ok && (tMin < dayOpen || tMin > dayClose)) ok = false;
@@ -475,9 +487,21 @@ export async function submitPublicBooking(
   }
 
   // リンクの最終受付設定をサーバ側でも検証（カレンダーをすり抜けた POST 対策）。
-  // 枠限定は「指定した枠をそのまま受け付ける」設定なので、営業時間・休憩は見ない。
-  if (schedule.mode !== "slots") {
-    const dh = resolveHoursForDate(shop, input.date);
+  // 枠限定・時間帯つきの日付限定は「指定した日時をそのまま受け付ける」設定なので、
+  // 営業時間・休憩は見ない（時間帯つきの日付限定は、その日の受付範囲だけ確認する）。
+  const dayHours =
+    schedule.mode === "slots" ? null : resolveHoursForDate(shop, input.date);
+  const ownRange = dayHours && dateWindowRange(schedule, dayHours);
+  if (ownRange) {
+    const startMin = hm(input.startTime) ?? -1;
+    if (startMin < ownRange.from || startMin > ownRange.to) {
+      return {
+        ok: false,
+        error: "この日時はこのリンクでは予約を受け付けていません",
+      };
+    }
+  } else if (dayHours) {
+    const dh = dayHours;
     if (dh.isClosed) {
       return { ok: false, error: "休業日のため予約できません" };
     }

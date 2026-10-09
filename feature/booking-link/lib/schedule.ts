@@ -10,7 +10,9 @@ import { dayOfWeekFromYmd, jstDateTimeToDate } from "@/helper/utils/time";
  * 予約できる日（mode）:
  *   always … 通常。営業日ならいつでも（曜日・時間帯で絞り込み可）
  *   range  … 期間限定。from〜to の間だけ（片方だけでも可。曜日・時間帯で絞り込み可）
- *   dates  … 日付限定。選んだ日だけ（時間帯で絞り込み可）
+ *   dates  … 日付限定。選んだ日だけ。時間帯を指定すると、その時間帯を店舗の営業時間・
+ *            休憩・休業日に関係なく受け付ける（定休日や営業時間外の特別営業に使う）。
+ *            時間帯を指定しなければ営業時間どおり
  *   slots  … 枠限定。日付＋開始時刻をピンポイントで指定（例: 21日 14:15〜 / 16:15〜）。
  *            店舗の営業時間・休憩・休業日の設定は使わず、指定した枠をそのまま出す
  *            （スタッフ・設備の空きは通常どおり確認する）。
@@ -56,7 +58,10 @@ export type LinkSchedule = {
   dates: string[];
   /** always / range: 曜日の絞り込み（0=日 … 6=土）。空 = 毎日 */
   dows: number[];
-  /** always / range / dates: 受け付ける開始時刻の範囲（両端を含む）。null = 営業時間どおり */
+  /**
+   * always / range / dates: 受け付ける開始時刻の範囲（両端を含む）。null = 営業時間どおり。
+   * dates ではこの範囲が営業時間より優先される（dateWindowRange）
+   */
   timeFrom: string | null;
   timeTo: string | null;
   /** slots: 受け付ける枠（日付・開始時刻の昇順・重複なし） */
@@ -280,6 +285,17 @@ export function addDaysYmd(ymd: string, n: number): string {
   return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
 }
 
+/**
+ * 開始時刻 "HH:mm" に施術時間（分）を足した終了時刻。予約の終了は常に
+ * 「開始 + メニューの施術時間」なので、画面の表示もこれで揃える。日をまたぐと "翌0:30"。
+ */
+export function endTimeOf(time: string, durationMin: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + Math.max(0, durationMin);
+  const hhmm = `${pad2(Math.floor(total / 60) % 24)}:${pad2(total % 60)}`;
+  return total >= 24 * 60 ? `翌${hhmm}` : hhmm;
+}
+
 /** 日付＋開始時刻（JST）の絶対時刻（ms）。 */
 export function slotStartMs(date: string, time: string): number {
   return jstDateTimeToDate(date, time).getTime();
@@ -319,6 +335,55 @@ export function withinTimeWindow(s: LinkSchedule, time: string): boolean {
   if (s.timeFrom && time < s.timeFrom) return false;
   if (s.timeTo && time > s.timeTo) return false;
   return true;
+}
+
+/**
+ * 店舗の営業時間ではなく、リンクの設定で受付時間が決まるか。
+ * 枠限定と、時間帯を指定した日付限定が当てはまる。どちらも「この日のこの時間に
+ * 受け付ける」と指定した設定なので、店舗の営業時間・休憩・休業日と「最終受付の挙動」は
+ * 使わない（定休日や営業時間外の特別営業でも受け付けられるように）。
+ * スタッフ・設備の空きは、どの設定でも確認する。
+ */
+export function ignoresShopHours(s: LinkSchedule): boolean {
+  return (
+    s.mode === "slots" ||
+    (s.mode === "dates" && (s.timeFrom != null || s.timeTo != null))
+  );
+}
+
+/** "HH:mm" → 0時からの分。読めなければ null（空き表の時刻計算と同じ読み方）。 */
+function minutesOf(t: string | null | undefined): number | null {
+  if (!t) return null;
+  const [h, m] = t.split(":").map(Number);
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return null;
+  return h * 60 + m;
+}
+
+/**
+ * 時間帯を指定した日付限定で、その日に受け付ける開始時刻の範囲（0時からの分・両端を含む）。
+ * 空欄の側は、その日の営業時間で補う。休業日や、補うと範囲が無くなる日（例: 14:15〜 で
+ * その日は正午まで）は、入れた時刻だけを受け付ける。限定の受付が思わぬ時間まで
+ * 広がらないよう、狭い側に倒す。
+ * 日付限定で時間帯を指定していなければ null（営業時間どおり）。
+ */
+export function dateWindowRange(
+  s: LinkSchedule,
+  day: { isClosed: boolean; openTime: string | null; closeTime: string | null },
+): { from: number; to: number } | null {
+  if (s.mode !== "dates") return null;
+  const from = minutesOf(s.timeFrom);
+  const to = minutesOf(s.timeTo);
+  // 営業日で時刻が未設定なら、空き表と同じ既定（9:00〜21:00）。
+  const open = day.isClosed ? null : (minutesOf(day.openTime) ?? 9 * 60);
+  const close = day.isClosed ? null : (minutesOf(day.closeTime) ?? 21 * 60);
+  if (from != null && to != null) return { from, to };
+  if (from != null) {
+    return { from, to: close != null && close >= from ? close : from };
+  }
+  if (to != null) {
+    return { from: open != null && open <= to ? open : to, to };
+  }
+  return null;
 }
 
 /** その日時（開始）を受け付ける設定か。締切・営業時間・空きは見ない。 */
@@ -594,8 +659,10 @@ function listWithRest(items: string[], max: number, unit: string): string {
   return `${items.slice(0, max).join("・")} ほか${items.length - max}${unit}`;
 }
 
+/** 時間帯の表示（"14:15〜16:00 の間" / "14:15 以降" / "16:00 まで"）。 */
 function timeWindowLabel(s: LinkSchedule): string {
-  return `${s.timeFrom ?? "開店"}〜${s.timeTo ?? "最終受付"}`;
+  if (s.timeFrom && s.timeTo) return `${s.timeFrom}〜${s.timeTo} の間`;
+  return s.timeFrom ? `${s.timeFrom} 以降` : `${s.timeTo} まで`;
 }
 
 /** 枠限定の枠一覧の短い表示（"10/21(水) 14:15・16:15"）。 */
@@ -642,7 +709,11 @@ export function describeSchedule(s: LinkSchedule, today: string): string[] {
     out.push(`毎週 ${dowsLabel(s.dows)}`);
   }
   if (s.mode !== "slots" && (s.timeFrom || s.timeTo)) {
-    out.push(`${timeWindowLabel(s)} 開始`);
+    out.push(
+      s.timeFrom && s.timeFrom === s.timeTo
+        ? `${s.timeFrom} 開始のみ`
+        : `${timeWindowLabel(s)}に開始`,
+    );
   }
   if (s.slotCapacity != null) out.push(`各枠 ${s.slotCapacity}件まで`);
   if (s.maxBookings != null) out.push(`先着 ${s.maxBookings}件`);
@@ -676,7 +747,11 @@ export function publicScheduleNotices(
     out.push(`ご予約いただける曜日：${dowsLabel(s.dows)}`);
   }
   if (s.mode !== "slots" && (s.timeFrom || s.timeTo)) {
-    out.push(`ご予約いただける時間：${timeWindowLabel(s)} の開始`);
+    out.push(
+      s.timeFrom && s.timeFrom === s.timeTo
+        ? `ご予約いただける時間：${s.timeFrom} 開始`
+        : `ご予約いただける時間：${timeWindowLabel(s)}に開始`,
+    );
   }
   if (s.closeAt) {
     out.push(`受付締切：${formatLongDateTime(s.closeAt, today)}`);

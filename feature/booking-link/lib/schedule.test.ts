@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   addDaysYmd,
   addSlots,
+  dateWindowRange,
   describeSchedule,
   emptySchedule,
+  endTimeOf,
   formatDuration,
   groupSlotsByDate,
   hasUpcomingDates,
+  ignoresShopHours,
   isLocalDateTime,
   isScheduleDate,
   isScheduleSlot,
@@ -199,6 +202,67 @@ describe("isScheduleDate / isScheduleSlot", () => {
   });
 });
 
+describe("時間帯つきの日付限定（営業時間より時間帯を優先）", () => {
+  const h = (m: number) => m * 60;
+  const CLOSED = { isClosed: true, openTime: null, closeTime: null };
+  const MORNING = { isClosed: false, openTime: "09:00", closeTime: "12:00" };
+  const FULL = { isClosed: false, openTime: "09:00", closeTime: "20:00" };
+  const dated = (patch: Partial<LinkSchedule>) =>
+    schedule({ mode: "dates", dates: ["2026-10-21"], ...patch });
+
+  it("営業時間を使わないのは、枠限定と時間帯を入れた日付限定だけ", () => {
+    expect(ignoresShopHours(TWO_SLOTS)).toBe(true);
+    expect(ignoresShopHours(dated({ timeFrom: "14:15" }))).toBe(true);
+    expect(ignoresShopHours(dated({ timeTo: "16:00" }))).toBe(true);
+    expect(ignoresShopHours(dated({}))).toBe(false);
+    expect(ignoresShopHours(schedule({ timeFrom: "14:15", timeTo: "14:15" }))).toBe(false);
+    expect(
+      ignoresShopHours(schedule({ mode: "range", from: "2026-10-01", timeFrom: "10:00" })),
+    ).toBe(false);
+  });
+
+  it("両端を入れたら、休業日でも営業時間外でもその範囲", () => {
+    const s = dated({ timeFrom: "14:15", timeTo: "16:00" });
+    expect(dateWindowRange(s, CLOSED)).toEqual({ from: h(14) + 15, to: h(16) });
+    expect(dateWindowRange(s, MORNING)).toEqual({ from: h(14) + 15, to: h(16) });
+    expect(dateWindowRange(s, FULL)).toEqual({ from: h(14) + 15, to: h(16) });
+  });
+
+  it("よねしんの例: 定休日・午前だけの日に 14:15〜（終わり空欄）なら 14:15 だけ", () => {
+    const s = dated({ timeFrom: "14:15" });
+    expect(dateWindowRange(s, CLOSED)).toEqual({ from: h(14) + 15, to: h(14) + 15 });
+    expect(dateWindowRange(s, MORNING)).toEqual({ from: h(14) + 15, to: h(14) + 15 });
+  });
+
+  it("空欄の側は、その日の営業時間で補う", () => {
+    expect(dateWindowRange(dated({ timeFrom: "14:15" }), FULL)).toEqual({
+      from: h(14) + 15,
+      to: h(20),
+    });
+    expect(dateWindowRange(dated({ timeTo: "11:00" }), MORNING)).toEqual({
+      from: h(9),
+      to: h(11),
+    });
+    // 営業日で時刻が未設定なら空き表と同じ 9:00〜21:00
+    const unset = { isClosed: false, openTime: null, closeTime: null };
+    expect(dateWindowRange(dated({ timeFrom: "18:00" }), unset)).toEqual({
+      from: h(18),
+      to: h(21),
+    });
+    // 休業日で始まりが空欄なら、入れた終わりの時刻だけ
+    expect(dateWindowRange(dated({ timeTo: "16:00" }), CLOSED)).toEqual({
+      from: h(16),
+      to: h(16),
+    });
+  });
+
+  it("時間帯なしの日付限定・ほかのモードは営業時間どおり（null）", () => {
+    expect(dateWindowRange(dated({}), FULL)).toBeNull();
+    expect(dateWindowRange(schedule({ timeFrom: "14:15" }), CLOSED)).toBeNull();
+    expect(dateWindowRange(TWO_SLOTS, CLOSED)).toBeNull();
+  });
+});
+
 describe("openSlots（締切前の枠）", () => {
   const today = schedule({
     mode: "slots",
@@ -364,10 +428,44 @@ describe("表示用の文言", () => {
     ).toEqual([
       "10/1(木)〜2027/1/5(火)",
       "毎週 平日",
-      "10:00〜最終受付 開始",
+      "10:00 以降に開始",
       "先着 10件",
       "開始の24時間前まで受付",
       "受付期間 〜12/28(月) 18:00",
+    ]);
+  });
+
+  it("片側だけ・両端の時間帯の表記（「最終受付 の開始」にしない）", () => {
+    const from = schedule({ mode: "dates", dates: ["2026-10-21"], timeFrom: "14:15" });
+    expect(describeSchedule(from, TODAY)).toEqual(["10/21(水)", "14:15 以降に開始"]);
+    expect(publicScheduleNotices(from, TODAY)).toEqual([
+      "ご予約いただける日：10月21日(水)",
+      "ご予約いただける時間：14:15 以降に開始",
+    ]);
+    const to = schedule({ timeTo: "16:00" });
+    expect(describeSchedule(to, TODAY)).toEqual(["営業日はいつでも", "16:00 までに開始"]);
+    expect(publicScheduleNotices(to, TODAY)).toEqual([
+      "ご予約いただける時間：16:00 までに開始",
+    ]);
+    const both = schedule({ timeFrom: "13:00", timeTo: "17:00" });
+    expect(describeSchedule(both, TODAY)).toEqual([
+      "営業日はいつでも",
+      "13:00〜17:00 の間に開始",
+    ]);
+    expect(publicScheduleNotices(both, TODAY)).toEqual([
+      "ご予約いただける時間：13:00〜17:00 の間に開始",
+    ]);
+  });
+
+  it("開始時刻を1つに絞った時間帯（毎日14:15のみ）", () => {
+    const s = schedule({ timeFrom: "14:15", timeTo: "14:15", slotCapacity: 1 });
+    expect(describeSchedule(s, TODAY)).toEqual([
+      "営業日はいつでも",
+      "14:15 開始のみ",
+      "各枠 1件まで",
+    ]);
+    expect(publicScheduleNotices(s, TODAY)).toEqual([
+      "ご予約いただける時間：14:15 開始",
     ]);
   });
 
@@ -388,6 +486,12 @@ describe("表示用の文言", () => {
       "受付締切：10月20日(火) 23:59",
       "先着5名様限定（残り3名様）",
     ]);
+  });
+
+  it("終了時刻 = 開始 + 施術時間（14:15開始・105分なら16:00）", () => {
+    expect(endTimeOf("14:15", 105)).toBe("16:00");
+    expect(endTimeOf("09:50", 15)).toBe("10:05");
+    expect(endTimeOf("23:30", 60)).toBe("翌00:30");
   });
 
   it("時間の表記", () => {
