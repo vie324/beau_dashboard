@@ -164,3 +164,36 @@ export function TrophyIcon(p: P) {
     </svg>
   );
 }
+
+export function LeafIcon(p: P) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 19c0-8 5.5-13.5 14-14-0.5 8.5-6 14-14 14z" />
+      <path d="M5 19c3.5-3.5 6.5-6.5 9.5-9.5" />
+    </svg>
+  );
+}
+
+export function ArrowRightIcon(p: P) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+export function PlusIcon(p: P) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function MinusIcon(p: P) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}

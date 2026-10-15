@@ -10,7 +10,7 @@ import {
   readMemberSession,
   MEMBER_CHANGE_EVENT,
 } from "@/feature/storefront/lib/memberSession";
-import { CartIcon, UserIcon } from "@/feature/storefront/components/icons";
+import { CartIcon, LeafIcon, UserIcon } from "@/feature/storefront/components/icons";
 
 /**
  * 公開販売ページ共通のヘッダー（sticky）。
@@ -24,6 +24,15 @@ export function StoreHeader({ slug, title }: { slug: string; title: string }) {
     name: string;
     pointsBalance: number;
   } | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+
+  // 少しスクロールしたら下線と影を出す（最上部ではヘッダーを地に溶け込ませる）
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -49,30 +58,42 @@ export function StoreHeader({ slug, title }: { slug: string; title: string }) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line/80 bg-base/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:h-16 sm:gap-3 sm:px-6">
+    <header
+      className={
+        "sticky top-0 z-40 transition-[background-color,box-shadow,border-color] duration-500 " +
+        (scrolled
+          ? "border-b border-line/70 bg-base/85 shadow-[0_8px_24px_-18px_rgba(45,51,41,0.35)] backdrop-blur-md"
+          : "border-b border-transparent bg-base/60 backdrop-blur-sm")
+      }
+    >
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:h-[4.5rem] sm:gap-3 sm:px-6">
         <a
           href={`/shop/${slug}`}
-          className="min-w-0 flex-1 truncate font-display text-md tracking-[0.14em] text-accent sm:text-xl"
+          className="group flex min-w-0 flex-1 items-center gap-2"
         >
-          {title}
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-transform duration-700 ease-silk group-hover:rotate-[20deg]">
+            <LeafIcon size={15} />
+          </span>
+          <span className="truncate font-display text-[15px] font-semibold tracking-[0.16em] text-ink sm:text-lg">
+            {title}
+          </span>
         </a>
         <a
           href={`/shop/${slug}/member`}
           className={
-            "flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors " +
+            "flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs transition-colors " +
             (member
-              ? "border-accent/40 bg-accent-soft text-accent-fg hover:border-accent"
-              : "border-line bg-surface text-muted hover:border-accent/50 hover:text-ink")
+              ? "bg-accent-soft text-accent-hover hover:bg-accent hover:text-accent-fg"
+              : "text-muted hover:bg-elevated hover:text-ink")
           }
         >
-          <UserIcon size={16} />
+          <UserIcon size={17} />
           {member ? (
             <>
               <span className="hidden max-w-[10rem] truncate sm:inline">
                 {member.name} 様
               </span>
-              <span className="font-semibold tabular-nums text-accent">
+              <span className="font-semibold tabular-nums">
                 {member.pointsBalance.toLocaleString("ja-JP")}pt
               </span>
             </>
@@ -84,13 +105,13 @@ export function StoreHeader({ slug, title }: { slug: string; title: string }) {
           type="button"
           onClick={openCart}
           aria-label={`カートを開く（${count}点）`}
-          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink transition-colors hover:border-accent/50 hover:text-accent"
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-elevated"
         >
-          <CartIcon size={18} />
+          <CartIcon size={19} />
           {count > 0 && (
             <span
               key={count}
-              className="absolute -right-1 -top-1 flex h-5 min-w-5 animate-pop items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-fg"
+              className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 animate-pop items-center justify-center rounded-full bg-clay px-1 text-[10px] font-bold text-white"
             >
               {count}
             </span>

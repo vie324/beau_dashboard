@@ -29,9 +29,9 @@ export default async function CheckoutPage({
         <ChevronLeftIcon size={16} />
         買い物を続ける
       </a>
-      <div className="mb-5 mt-3">
-        <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Checkout</p>
-        <h1 className="mt-1 font-display text-2xl tracking-wide text-ink">
+      <div className="mb-8 mt-4">
+        <p className="font-accent text-md italic tracking-[0.28em] text-accent">Checkout</p>
+        <h1 className="mt-1 font-display text-[1.6rem] font-semibold tracking-[0.1em] text-ink sm:text-[2rem]">
           ご購入手続き
         </h1>
       </div>

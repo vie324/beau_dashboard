@@ -3,8 +3,68 @@
 @tailwind utilities;
 
 @layer base {
+  /* 色は "R G B" の CSS 変数（tailwind.config.ts の colors が参照する）。
+     :root = 管理画面。お客様向け販売ページは下の .theme-store で差し替える。 */
   :root {
     color-scheme: light;
+    --c-base: 244 239 230; /* #f4efe6 */
+    --c-surface: 255 254 251; /* #fffefb */
+    --c-elevated: 239 232 218; /* #efe8da */
+    --c-line: 228 220 203; /* #e4dccb */
+    --c-ink: 59 53 44; /* #3b352c */
+    --c-muted: 111 103 87; /* #6f6757 */
+    --c-faint: 156 147 127; /* #9c937f */
+    --c-accent: 193 154 91; /* #c19a5b */
+    --c-accent-soft: 241 231 211; /* #f1e7d3 */
+    --c-accent-hover: 169 128 63; /* #a9803f */
+    --c-accent-fg: 43 33 20; /* #2b2114 */
+    --c-clay: 176 112 76; /* #b0704c */
+    --c-clay-soft: 245 230 219; /* #f5e6db */
+    --c-ok: 63 157 107; /* #3f9d6b */
+    --c-warn: 198 137 47; /* #c6892f */
+    --c-danger: 200 85 79; /* #c8554f */
+    --c-info: 85 128 173; /* #5580ad */
+    --font-display: Georgia, "Times New Roman", serif;
+    --font-accent: Georgia, "Times New Roman", serif;
+  }
+
+  /* お客様向け販売ページ（/shop/<slug>）。オーガニック系の商品に合う、
+     リネン地 × モスグリーン × テラコッタの落ち着いた配色と、明朝の見出し。
+     フォント変数（--font-store-*）は app/shop/[slug]/layout.tsx の next/font が入れる。 */
+  .theme-store {
+    --c-base: 244 241 233; /* #f4f1e9 リネン */
+    --c-surface: 252 251 247; /* #fcfbf7 */
+    --c-elevated: 236 232 222; /* #ece8de オーツ */
+    --c-line: 223 217 203; /* #dfd9cb */
+    --c-ink: 45 51 41; /* #2d3329 深いオリーブ墨 */
+    --c-muted: 92 100 86; /* #5c6456 */
+    --c-faint: 142 148 133; /* #8e9485 */
+    --c-accent: 86 105 74; /* #56694a モス */
+    --c-accent-soft: 228 233 218; /* #e4e9da */
+    --c-accent-hover: 68 85 58; /* #44553a */
+    --c-accent-fg: 248 246 239; /* #f8f6ef モスの上の文字 */
+    --c-clay: 176 112 76; /* #b0704c テラコッタ */
+    --c-clay-soft: 245 230 219; /* #f5e6db */
+    --c-ok: 76 138 92; /* #4c8a5c */
+    --c-warn: 186 125 52; /* #ba7d34 */
+    --c-danger: 178 84 64; /* #b25440 */
+    --font-display: var(--font-store-serif), "Hiragino Mincho ProN", "Yu Mincho",
+      "YuMincho", serif;
+    --font-accent: var(--font-store-accent), Georgia, serif;
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic Medium",
+      "YuGothic", "Meiryo", system-ui, sans-serif;
+    font-feature-settings: "palt" 1;
+    letter-spacing: 0.02em;
+    background-color: rgb(var(--c-base));
+    color: rgb(var(--c-ink));
+  }
+  /* オーバースクロール時に見える body の色も販売ページの地色に合わせる */
+  body:has(.theme-store) {
+    background-color: rgb(244 241 233);
+  }
+  .theme-store ::selection {
+    background: rgb(var(--c-accent) / 0.85);
+    color: rgb(var(--c-accent-fg));
   }
 
   html,
@@ -86,6 +146,44 @@
   .date-input-tight::-webkit-calendar-picker-indicator {
     margin-left: 0;
     padding: 0;
+  }
+}
+
+/* ---- 販売ページの動き ----
+   .reveal: スクロールで画面に入ったらふわっと出す（feature/storefront/components/Reveal.tsx）。
+   初期表示で画面内にあるものは隠さない（JS 無効・読み込み前でも内容が見える）。 */
+.theme-store .reveal {
+  transition:
+    opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.theme-store .reveal-pending {
+  opacity: 0;
+  transform: translateY(26px);
+}
+/* 紙のような細かい粒子感（ヒーロー・帯の背景に重ねる） */
+.theme-store .grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.33 0 0 0 0 0.28 0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-store *,
+  .theme-store *::before,
+  .theme-store *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .theme-store .reveal-pending {
+    opacity: 1;
+    transform: none;
   }
 }
 

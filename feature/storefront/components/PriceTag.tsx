@@ -24,7 +24,7 @@ export function PriceTag({
       ? taxInclusiveUnit(compareAtPrice, taxRate)
       : null;
   const sizeCls =
-    size === "lg" ? "text-2xl" : size === "sm" ? "text-sm" : "text-md";
+    size === "lg" ? "text-[1.75rem]" : size === "sm" ? "text-sm" : "text-[15px]";
   return (
     <div className={cn("flex flex-wrap items-baseline gap-x-1.5", className)}>
       {cmp != null && (
@@ -34,7 +34,7 @@ export function PriceTag({
       )}
       <span
         className={cn(
-          "font-bold tabular-nums",
+          "font-semibold tabular-nums tracking-wide",
           cmp != null ? "text-danger" : "text-ink",
           sizeCls,
         )}

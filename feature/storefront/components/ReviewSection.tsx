@@ -74,21 +74,22 @@ export function ReviewSection({
   }));
 
   return (
-    <section className="mt-6">
-      <h2 className="mb-3 text-base font-semibold text-ink">
+    <section className="mt-24 sm:mt-28">
+      <p className="font-accent text-md italic tracking-[0.28em] text-accent">Reviews</p>
+      <h2 className="mb-6 mt-1 font-display text-[1.55rem] font-semibold tracking-[0.1em] text-ink sm:text-[2rem]">
         レビュー
         {ratingCount > 0 && (
-          <span className="ml-2 text-sm font-normal text-muted">
+          <span className="ml-2 font-sans text-sm font-normal tracking-normal text-muted">
             ({ratingCount}件)
           </span>
         )}
       </h2>
 
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-panel">
+      <div className="rounded-[1.5rem] border border-line bg-surface p-5 shadow-panel sm:p-7">
         {ratingCount > 0 ? (
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="text-center sm:w-32">
-              <div className="text-4xl font-bold tabular-nums text-ink">
+              <div className="font-accent text-5xl font-semibold tabular-nums lining-nums text-ink">
                 {ratingAvg.toFixed(1)}
               </div>
               <StarRating value={ratingAvg} size={18} className="mt-1" />

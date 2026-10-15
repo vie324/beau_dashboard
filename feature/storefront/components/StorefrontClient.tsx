@@ -9,13 +9,17 @@ import type {
 import { ProductCard } from "@/feature/storefront/components/ProductCard";
 import { CartDrawer } from "@/feature/storefront/components/CartDrawer";
 import { PriceTag } from "@/feature/storefront/components/PriceTag";
+import { Reveal } from "@/feature/storefront/components/Reveal";
+import { BenefitIcon } from "@/feature/storefront/components/BenefitIcon";
+import { ProductImagePlaceholder } from "@/feature/storefront/components/ProductImagePlaceholder";
 import {
   CartIcon,
+  CheckIcon,
+  LeafIcon,
+  PlusIcon,
   SearchIcon,
-  SparkleIcon,
-  TrophyIcon,
-  ClockIcon,
 } from "@/feature/storefront/components/icons";
+import { storeBenefits } from "@/feature/storefront/lib/benefits";
 import {
   readCart,
   writeCart,
@@ -258,25 +262,81 @@ export function StorefrontClient({
 
   const showSections = filter === "all" && !query.trim();
 
+  // カテゴリのタイル: 商品があるカテゴリだけ。写真はそのカテゴリの最初の商品写真。
+  const categoryTiles = useMemo(
+    () =>
+      categories
+        .filter((c) => (categoryCounts.get(c.id) ?? 0) > 0)
+        .map((c) => ({
+          ...c,
+          count: categoryCounts.get(c.id) ?? 0,
+          image:
+            products
+              .filter((p) => p.categoryId === c.id)
+              .map((p) => parseImageUrls(p.imageUrls)[0])
+              .find(Boolean) ?? null,
+        })),
+    [categories, categoryCounts, products],
+  );
+  const guide = storeBenefits(shop).slice(0, 4);
+
+  function pickCategory(id: number) {
+    setFilter(id);
+    document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+  }
+
   return (
     <>
+      {/* カテゴリから探す */}
+      {showSections && categoryTiles.length >= 2 && (
+        <Reveal className="mb-20 sm:mb-28">
+          <SectionHeading eyebrow="Category" title="カテゴリから探す" />
+          <div className="no-scrollbar -mx-4 flex gap-5 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:gap-8 sm:px-0">
+            {categoryTiles.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => pickCategory(c.id)}
+                className="group w-24 shrink-0 text-center sm:w-32"
+              >
+                <span className="block aspect-square overflow-hidden rounded-full border border-line bg-elevated ring-accent/30 ring-offset-2 ring-offset-base transition-all duration-500 ease-silk group-hover:ring-2">
+                  {c.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={c.image}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-700 ease-silk group-hover:scale-110"
+                    />
+                  ) : (
+                    <ProductImagePlaceholder name={c.name} size="sm" />
+                  )}
+                </span>
+                <span className="mt-2.5 block text-[11px] leading-snug tracking-normal text-ink transition-colors [word-break:auto-phrase] group-hover:text-accent sm:text-xs">
+                  {c.name}
+                </span>
+                <span className="block text-[10px] text-faint">{c.count}点</span>
+              </button>
+            ))}
+          </div>
+        </Reveal>
+      )}
+
       {/* スタッフのおすすめ */}
       {showSections && featured.length > 0 && (
-        <section className="mb-10">
-          <SectionHeading
-            icon={<SparkleIcon size={16} />}
-            eyebrow="Staff Picks"
-            title="スタッフのおすすめ"
-            lead="施術者が実際に使っている・患者さまに勧めているアイテムです。"
-          />
-          <div className="grid gap-3 sm:grid-cols-3">
-            {featured.map((p) => (
-              <FeaturedCard
-                key={p.id}
-                product={p}
-                slug={slug}
-                onAdd={add}
-              />
+        <section id="picks" className="mb-20 scroll-mt-24 sm:mb-28">
+          <Reveal>
+            <SectionHeading
+              eyebrow="Staff Picks"
+              title="スタッフのおすすめ"
+              lead="施術者が実際に使っている・患者さまに勧めているアイテムです。"
+            />
+          </Reveal>
+          <div className="grid gap-6 sm:grid-cols-3 sm:gap-5">
+            {featured.map((p, i) => (
+              <Reveal key={p.id} delay={i * 120} className="h-full">
+                <FeaturedCard product={p} slug={slug} onAdd={add} />
+              </Reveal>
             ))}
           </div>
         </section>
@@ -284,56 +344,62 @@ export function StorefrontClient({
 
       {/* 人気ランキング */}
       {showSections && ranked.length > 0 && (
-        <section className="mb-10">
-          <SectionHeading
-            icon={<TrophyIcon size={16} />}
-            eyebrow="Ranking"
-            title="人気ランキング"
-            lead="直近3ヶ月でよく選ばれている商品。"
-          />
-          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-            {ranked.map((p) => (
-              <RankedCard key={p.id} product={p} slug={slug} onAdd={add} />
+        <section className="mb-20 sm:mb-28">
+          <Reveal>
+            <SectionHeading
+              eyebrow="Ranking"
+              title="人気ランキング"
+              lead="直近3ヶ月でよく選ばれている商品。"
+            />
+          </Reveal>
+          <div className="no-scrollbar -mx-4 flex gap-5 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0">
+            {ranked.map((p, i) => (
+              <Reveal key={p.id} delay={i * 120} className="w-[64%] shrink-0 sm:w-auto">
+                <RankedCard product={p} slug={slug} onAdd={add} />
+              </Reveal>
             ))}
           </div>
         </section>
       )}
 
       {/* 商品一覧 */}
-      <section id="products" className="scroll-mt-20">
+      <section id="products" className="scroll-mt-24">
         <SectionHeading
-          eyebrow="Products"
+          eyebrow="All Items"
           title="商品一覧"
-          lead={`${products.length}点の商品`}
+          lead={`${products.length}点のアイテム`}
         />
 
-        <div className="mb-4 space-y-3">
+        <div className="mb-8 space-y-4">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <SearchIcon
                 size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint"
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint"
               />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="商品名・キーワードで検索"
                 aria-label="商品を検索"
-                className="pl-9"
+                className="h-11 rounded-full bg-surface pl-11"
               />
             </div>
-            <Select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              aria-label="並び替え"
-              className="w-36 shrink-0"
-            >
-              <option value="recommended">おすすめ順</option>
-              <option value="popular">人気順</option>
-              <option value="new">新着順</option>
-              <option value="price-asc">価格が安い順</option>
-              <option value="price-desc">価格が高い順</option>
-            </Select>
+            {/* Select は w-full 固定なので、幅は外側の箱で決める */}
+            <div className="w-[8.5rem] shrink-0 sm:w-40">
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                aria-label="並び替え"
+                className="h-11 rounded-full bg-surface pl-4"
+              >
+                <option value="recommended">おすすめ順</option>
+                <option value="popular">人気順</option>
+                <option value="new">新着順</option>
+                <option value="price-asc">価格が安い順</option>
+                <option value="price-desc">価格が高い順</option>
+              </Select>
+            </div>
           </div>
           <div className="no-scrollbar -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
             <Chip
@@ -377,8 +443,9 @@ export function StorefrontClient({
         </div>
 
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-line bg-surface px-4 py-14 text-center">
-            <p className="text-sm text-muted">
+          <div className="rounded-[1.5rem] border border-dashed border-line bg-surface/60 px-4 py-16 text-center">
+            <LeafIcon size={28} className="mx-auto text-accent/50" />
+            <p className="mt-3 text-sm text-muted">
               {filter === "wish"
                 ? "お気に入りに登録した商品がありません。♡ をタップして追加できます。"
                 : "条件に合う商品が見つかりませんでした。"}
@@ -390,53 +457,93 @@ export function StorefrontClient({
                   setFilter("all");
                   setInStockOnly(false);
                 }}
-                className="mt-3 text-xs text-accent hover:underline"
+                className="mt-4 rounded-full border border-accent/40 px-4 py-1.5 text-xs text-accent-hover transition-colors hover:bg-accent hover:text-accent-fg"
               >
                 条件をクリア
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-            {filtered.map((p) => (
-              <ProductCard
-                key={p.id}
-                product={p}
-                slug={slug}
-                wished={wishSet.has(p.id)}
-                pointRatePercent={shop.pointRatePercent}
-                onAdd={add}
-                onToggleWish={toggleWish}
-              />
+          <div className="grid grid-cols-2 gap-x-3 gap-y-9 sm:grid-cols-3 sm:gap-x-5 sm:gap-y-12 lg:grid-cols-4">
+            {filtered.map((p, i) => (
+              <Reveal key={p.id} delay={(i % 4) * 80} className="h-full">
+                <ProductCard
+                  product={p}
+                  slug={slug}
+                  wished={wishSet.has(p.id)}
+                  pointRatePercent={shop.pointRatePercent}
+                  onAdd={add}
+                  onToggleWish={toggleWish}
+                />
+              </Reveal>
             ))}
           </div>
         )}
       </section>
 
+      {/* ご利用ガイド（送料・ポイント・店頭受取） */}
+      {showSections && guide.length > 0 && (
+        <Reveal className="mt-24 sm:mt-32">
+          <section className="grain relative overflow-hidden rounded-[2rem] bg-accent px-6 py-12 text-accent-fg sm:px-12 sm:py-16">
+            <LeafIcon
+              size={260}
+              strokeWidth={0.5}
+              className="pointer-events-none absolute -right-12 -top-10 animate-sway text-accent-fg/10"
+            />
+            <p className="relative font-accent text-lg italic tracking-[0.3em] text-accent-fg/70">
+              Shopping Guide
+            </p>
+            <h2 className="relative mt-2 font-display text-2xl font-semibold tracking-[0.1em] sm:text-3xl">
+              安心してお買い物いただくために
+            </h2>
+            <ul
+              className={
+                "relative mt-10 grid gap-8 sm:grid-cols-2 " +
+                (guide.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3")
+              }
+            >
+              {guide.map((b) => (
+                <li key={b.kind}>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full border border-accent-fg/30">
+                    <BenefitIcon kind={b.kind} size={20} />
+                  </span>
+                  <h3 className="mt-4 text-[15px] font-semibold tracking-wider">{b.label}</h3>
+                  <p className="mt-2 text-xs leading-[1.9] text-accent-fg/75">{b.detail}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </Reveal>
+      )}
+
       {/* 最近見た商品 */}
       {showSections && recentProducts.length > 0 && (
-        <section className="mt-12">
-          <SectionHeading
-            icon={<ClockIcon size={16} />}
-            eyebrow="Recently Viewed"
-            title="最近見た商品"
-          />
-          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+        <Reveal className="mt-20 sm:mt-24">
+          <SectionHeading eyebrow="Recently Viewed" title="最近見た商品" />
+          <div className="no-scrollbar -mx-4 flex gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
             {recentProducts.map((p) => {
               const img = parseImageUrls(p.imageUrls)[0];
               return (
                 <a
                   key={p.id}
                   href={`/shop/${slug}/item/${p.id}`}
-                  className="w-28 shrink-0"
+                  className="group w-28 shrink-0 sm:w-32"
                 >
-                  <div className="aspect-square overflow-hidden rounded-xl border border-line bg-elevated">
+                  <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-elevated">
                     {img ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={img} alt={p.name} className="h-full w-full object-cover" />
-                    ) : null}
+                      <img
+                        src={img}
+                        alt={p.name}
+                        className="h-full w-full object-cover transition-transform duration-700 ease-silk group-hover:scale-105"
+                      />
+                    ) : (
+                      <ProductImagePlaceholder name={p.name} size="sm" />
+                    )}
                   </div>
-                  <div className="mt-1 line-clamp-2 text-xs text-muted">{p.name}</div>
+                  <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted group-hover:text-ink">
+                    {p.name}
+                  </div>
                   <div className="text-xs font-semibold tabular-nums text-ink">
                     {formatYen(taxInclusiveUnit(p.price, p.taxRate))}
                   </div>
@@ -444,28 +551,39 @@ export function StorefrontClient({
               );
             })}
           </div>
-        </section>
+        </Reveal>
       )}
 
       {/* フローティング カートボタン */}
       {cartCount > 0 && !cartOpen && (
-        <button
-          onClick={() => setCartOpen(true)}
-          className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-fg shadow-panel transition-transform hover:scale-105 sm:left-auto sm:right-6 sm:translate-x-0"
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4 sm:justify-end sm:px-6"
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
         >
-          <CartIcon size={18} />
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-fg px-1.5 text-xs text-accent">
-            {cartCount}
-          </span>
-          カートを見る・{formatYen(subtotalIncl)}
-        </button>
+          <button
+            onClick={() => setCartOpen(true)}
+            className="pointer-events-auto flex animate-rise items-center gap-3 rounded-full bg-ink py-2 pl-2 pr-6 text-sm text-surface shadow-[0_18px_40px_-16px_rgba(45,51,41,0.75)] transition-transform duration-500 ease-silk hover:-translate-y-0.5"
+          >
+            <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-accent text-accent-fg">
+              <CartIcon size={18} />
+              <span
+                key={cartCount}
+                className="absolute -right-1 -top-1 flex h-5 min-w-5 animate-pop items-center justify-center rounded-full bg-clay px-1 text-[10px] font-bold text-white"
+              >
+                {cartCount}
+              </span>
+            </span>
+            <span className="font-medium tracking-wider">カートを見る</span>
+            <span className="tabular-nums text-surface/75">{formatYen(subtotalIncl)}</span>
+          </button>
+        </div>
       )}
 
       {/* トースト */}
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 top-20 z-[60] flex justify-center px-4">
-          <div className="animate-slide-up rounded-full bg-ink/90 px-4 py-2 text-sm text-surface shadow-panel">
+        <div className="pointer-events-none fixed inset-x-0 top-24 z-[60] flex justify-center px-4">
+          <div className="flex animate-rise items-center gap-2 rounded-full bg-ink/95 px-5 py-2.5 text-[13px] text-surface shadow-panel backdrop-blur">
+            <CheckIcon size={15} className="shrink-0 text-accent-soft" />
             {toast}
           </div>
         </div>
@@ -490,26 +608,21 @@ export function StorefrontClient({
 }
 
 function SectionHeading({
-  icon,
   eyebrow,
   title,
   lead,
 }: {
-  icon?: React.ReactNode;
   eyebrow: string;
   title: string;
   lead?: string;
 }) {
   return (
-    <div className="mb-4">
-      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.3em] text-accent">
-        {icon}
-        {eyebrow}
-      </p>
-      <h2 className="mt-1 font-display text-xl tracking-wide text-ink sm:text-2xl">
+    <div className="mb-7 sm:mb-9">
+      <p className="font-accent text-md italic tracking-[0.28em] text-accent">{eyebrow}</p>
+      <h2 className="mt-1 font-display text-[1.55rem] font-semibold tracking-[0.1em] text-ink sm:text-[2rem]">
         {title}
       </h2>
-      {lead && <p className="mt-1 text-xs text-muted">{lead}</p>}
+      {lead && <p className="mt-2 text-xs leading-relaxed text-muted sm:text-[13px]">{lead}</p>}
     </div>
   );
 }
@@ -527,19 +640,19 @@ function Chip({
 }) {
   const activeCls =
     tone === "danger"
-      ? "border-danger bg-danger text-white shadow"
-      : "border-accent bg-accent text-accent-fg shadow";
+      ? "border-danger bg-danger text-white"
+      : "border-ink bg-ink text-surface";
   const idleCls =
     tone === "danger"
-      ? "border-danger/40 bg-surface text-danger hover:bg-danger/10"
-      : "border-line bg-surface text-muted hover:border-accent/40 hover:text-ink";
+      ? "border-danger/40 bg-surface/60 text-danger hover:bg-danger/10"
+      : "border-line bg-surface/60 text-muted hover:border-ink/30 hover:text-ink";
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       className={
-        "shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all " +
+        "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs tracking-wide transition-all duration-300 " +
         (active ? activeCls : idleCls)
       }
     >
@@ -559,44 +672,65 @@ function FeaturedCard({
 }) {
   const img = parseImageUrls(p.imageUrls)[0];
   const sold = p.stock <= 0;
+  const href = `/shop/${slug}/item/${p.id}`;
   return (
-    <article className="flex gap-3 rounded-2xl border border-accent/30 bg-surface p-3 shadow-panel">
-      <a
-        href={`/shop/${slug}/item/${p.id}`}
-        className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-elevated sm:h-28 sm:w-28"
-      >
+    <article className="group flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-line/70 bg-surface shadow-panel">
+      <a href={href} className="relative block aspect-[4/3] overflow-hidden bg-elevated sm:aspect-[4/5]">
         {img ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt={p.name} className="h-full w-full object-cover" />
-        ) : null}
+          <img
+            src={img}
+            alt={p.name}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-[1.4s] ease-silk group-hover:scale-[1.06]"
+          />
+        ) : (
+          <ProductImagePlaceholder name={p.name} />
+        )}
+        <span className="absolute left-3 top-3 rounded-full bg-surface/90 px-3 py-1 font-accent text-xs italic tracking-[0.2em] text-accent backdrop-blur">
+          Staff&apos;s Choice
+        </span>
       </a>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <a
-          href={`/shop/${slug}/item/${p.id}`}
-          className="line-clamp-2 text-sm font-semibold leading-snug text-ink hover:text-accent"
-        >
-          {p.name}
-        </a>
+      <div className="flex flex-1 flex-col p-5">
         {p.featuredComment && (
-          <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-muted">
-            “{p.featuredComment}”
+          <p className="relative pl-6 font-display text-[13px] leading-[1.95] text-ink/90">
+            <span
+              aria-hidden
+              className="absolute -top-1.5 left-0 font-accent text-4xl leading-none text-clay"
+            >
+              “
+            </span>
+            {p.featuredComment}
           </p>
         )}
-        <div className="mt-auto flex items-end justify-between gap-2 pt-1.5">
-          <PriceTag
-            size="sm"
-            price={p.price}
-            compareAtPrice={p.compareAtPrice}
-            taxRate={p.taxRate}
-          />
-          <button
-            type="button"
-            disabled={sold}
-            onClick={() => onAdd(p.id)}
-            className="h-8 shrink-0 rounded-lg bg-accent px-3 text-[11px] font-semibold text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-50"
+        <div className="mt-auto pt-5">
+          <a
+            href={href}
+            className="line-clamp-1 text-sm font-medium text-ink transition-colors hover:text-accent"
           >
-            {sold ? "売り切れ" : "カートへ"}
-          </button>
+            {p.name}
+          </a>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <PriceTag
+              size="sm"
+              price={p.price}
+              compareAtPrice={p.compareAtPrice}
+              taxRate={p.taxRate}
+            />
+            <button
+              type="button"
+              disabled={sold}
+              onClick={() => onAdd(p.id)}
+              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-accent px-4 text-[11px] font-semibold tracking-wider text-accent-fg transition-colors duration-300 hover:bg-accent-hover disabled:opacity-50"
+            >
+              {sold ? "売り切れ" : (
+                <>
+                  <PlusIcon size={13} />
+                  カートへ
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </article>
@@ -614,49 +748,52 @@ function RankedCard({
 }) {
   const img = parseImageUrls(p.imageUrls)[0];
   const sold = p.stock <= 0;
-  const rankCls =
-    p.salesRank === 1
-      ? "bg-accent text-accent-fg"
-      : p.salesRank === 2
-        ? "bg-ink text-surface"
-        : "bg-elevated text-ink";
+  const href = `/shop/${slug}/item/${p.id}`;
   return (
-    <article className="relative w-40 shrink-0 overflow-hidden rounded-2xl border border-line bg-surface shadow-panel sm:w-44">
-      <span
-        className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow ${rankCls}`}
-      >
-        {p.salesRank}
-      </span>
-      <a
-        href={`/shop/${slug}/item/${p.id}`}
-        className="block aspect-square overflow-hidden bg-elevated"
-      >
-        {img ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt={p.name} className="h-full w-full object-cover" />
-        ) : null}
-      </a>
-      <div className="p-2.5">
-        <a
-          href={`/shop/${slug}/item/${p.id}`}
-          className="line-clamp-2 text-xs font-medium leading-snug text-ink hover:text-accent"
-        >
-          {p.name}
+    <article className="group">
+      <div className="relative overflow-hidden rounded-[1.25rem] bg-elevated">
+        <a href={href} className="block aspect-square">
+          {img ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={img}
+              alt={p.name}
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-[1.4s] ease-silk group-hover:scale-[1.06]"
+            />
+          ) : (
+            <ProductImagePlaceholder name={p.name} />
+          )}
         </a>
-        <PriceTag
-          size="sm"
-          className="mt-1"
-          price={p.price}
-          compareAtPrice={p.compareAtPrice}
-          taxRate={p.taxRate}
-        />
+        {/* 順位（写真の角を切り欠いたように見せる） */}
+        <span className="pointer-events-none absolute bottom-0 left-0 rounded-tr-[1.25rem] bg-base px-4 pb-1 pt-2.5 font-accent text-[2.6rem] font-semibold italic leading-none text-clay lining-nums">
+          {String(p.salesRank ?? 0).padStart(2, "0")}
+        </span>
+      </div>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <a
+            href={href}
+            className="line-clamp-2 text-sm font-medium leading-relaxed text-ink transition-colors hover:text-accent"
+          >
+            {p.name}
+          </a>
+          <PriceTag
+            size="sm"
+            className="mt-0.5"
+            price={p.price}
+            compareAtPrice={p.compareAtPrice}
+            taxRate={p.taxRate}
+          />
+        </div>
         <button
           type="button"
           disabled={sold}
           onClick={() => onAdd(p.id)}
-          className="mt-2 h-8 w-full rounded-lg border border-accent/40 bg-accent-soft text-[11px] font-semibold text-accent-fg transition-colors hover:bg-accent disabled:opacity-50"
+          aria-label={sold ? "売り切れ" : `${p.name}をカートに入れる`}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent/40 text-accent-hover transition-all duration-300 hover:rotate-90 hover:bg-accent hover:text-accent-fg disabled:opacity-40"
         >
-          {sold ? "売り切れ" : "カートに入れる"}
+          <PlusIcon size={16} />
         </button>
       </div>
     </article>

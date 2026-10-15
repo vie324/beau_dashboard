@@ -119,7 +119,7 @@ export default async function CompletePage({
           </div>
 
           {order.pointsEarned > 0 && (
-            <div className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent-soft/60 px-3 py-2 text-sm text-accent-fg">
+            <div className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent-soft/60 px-3 py-2 text-sm text-accent-hover">
               <CoinIcon size={16} className="text-accent" />
               {paid
                 ? `${order.pointsEarned.toLocaleString("ja-JP")} ポイントを付与しました`
@@ -138,7 +138,7 @@ export default async function CompletePage({
             )}
             <a
               href={`/shop/${slug}`}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-line px-5 text-sm text-ink hover:border-accent/60 hover:text-accent"
+              className="inline-flex h-12 items-center justify-center rounded-full border border-line px-6 text-sm tracking-wider text-ink transition-colors hover:border-accent hover:text-accent"
             >
               ストアに戻る
             </a>
