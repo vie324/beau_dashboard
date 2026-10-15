@@ -1,5 +1,10 @@
 import type { Config } from "tailwindcss";
 
+// 色は CSS 変数（"R G B"）で定義し、`bg-accent/10` のような不透明度指定も効くようにする。
+// 値は app/globals.css の :root（管理画面）にあり、お客様向け販売ページ（/shop）は
+// .theme-store で別のパレットに差し替える（同じクラス名のまま配色だけ変わる）。
+const c = (name: string) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 const config: Config = {
   darkMode: "class",
   content: [
@@ -11,23 +16,28 @@ const config: Config = {
     extend: {
       colors: {
         // Beau — warm, light & calm palette (salon / clinic inspired).
-        base: "#f4efe6", // warm ivory page
-        surface: "#fffefb", // cards
-        elevated: "#efe8da", // hover / inputs
-        line: "#e4dccb", // borders
-        ink: "#3b352c", // primary text (soft warm brown, not black)
-        muted: "#6f6757",
-        faint: "#9c937f",
+        base: c("base"), // warm ivory page
+        surface: c("surface"), // cards
+        elevated: c("elevated"), // hover / inputs
+        line: c("line"), // borders
+        ink: c("ink"), // primary text (soft warm brown, not black)
+        muted: c("muted"),
+        faint: c("faint"),
         accent: {
-          DEFAULT: "#c19a5b", // warm gold
-          soft: "#f1e7d3", // light tint background
-          hover: "#a9803f",
-          fg: "#2b2114", // dark text on gold
+          DEFAULT: c("accent"), // warm gold
+          soft: c("accent-soft"), // light tint background
+          hover: c("accent-hover"),
+          fg: c("accent-fg"), // text on accent
         },
-        ok: "#3f9d6b",
-        warn: "#c6892f",
-        danger: "#c8554f",
-        info: "#5580ad",
+        // 販売ページの差し色（テラコッタ）。期間限定ポイント・NEW 等に使う。
+        clay: {
+          DEFAULT: c("clay"),
+          soft: c("clay-soft"),
+        },
+        ok: c("ok"),
+        warn: c("warn"),
+        danger: c("danger"),
+        info: c("info"),
       },
       // 注意: 色に `base` があるため `text-base` は「フォントサイズ 1rem」と
       // 「文字色 #f4efe6」の両方の CSS を生成し、色の方がアルファベット順で
@@ -47,7 +57,10 @@ const config: Config = {
           "Meiryo",
           "sans-serif",
         ],
-        display: ["Georgia", "Times New Roman", "serif"],
+        // 見出し用。既定は Georgia、販売ページでは明朝（Shippori Mincho）に差し替わる。
+        display: "var(--font-display)",
+        // 英字の飾り見出し（"Online Store" 等）。販売ページでは Cormorant Garamond。
+        accent: "var(--font-accent)",
       },
       borderRadius: {
         xl: "0.625rem",
@@ -78,6 +91,35 @@ const config: Config = {
           "50%": { transform: "scale(1.18)" },
           "100%": { transform: "scale(1)" },
         },
+        // ---- 販売ページの動き ----
+        rise: {
+          from: { opacity: "0", transform: "translateY(18px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        float: {
+          "0%, 100%": { transform: "translate3d(0,0,0) scale(1)" },
+          "50%": { transform: "translate3d(18px,-26px,0) scale(1.06)" },
+        },
+        "float-slow": {
+          "0%, 100%": { transform: "translate3d(0,0,0) rotate(0deg)" },
+          "50%": { transform: "translate3d(-14px,18px,0) rotate(6deg)" },
+        },
+        sway: {
+          "0%, 100%": { transform: "rotate(-4deg)" },
+          "50%": { transform: "rotate(4deg)" },
+        },
+        marquee: {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+        shimmer: {
+          from: { backgroundPosition: "-200% 0" },
+          to: { backgroundPosition: "200% 0" },
+        },
+        settle: {
+          from: { transform: "scale(1.12)" },
+          to: { transform: "scale(1)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.16s ease-out",
@@ -85,6 +127,17 @@ const config: Config = {
         "slide-up": "slide-up 0.3s ease-out both",
         "scale-in": "scale-in 0.18s ease-out",
         pop: "pop 0.3s ease-out",
+        rise: "rise 0.9s cubic-bezier(0.22,1,0.36,1) both",
+        float: "float 16s ease-in-out infinite",
+        "float-slow": "float-slow 22s ease-in-out infinite",
+        sway: "sway 7s ease-in-out infinite",
+        marquee: "marquee 38s linear infinite",
+        shimmer: "shimmer 6s linear infinite",
+        settle: "settle 2.6s cubic-bezier(0.22,1,0.36,1) both",
+        "spin-slow": "spin 60s linear infinite",
+      },
+      transitionTimingFunction: {
+        silk: "cubic-bezier(0.22,1,0.36,1)",
       },
     },
   },

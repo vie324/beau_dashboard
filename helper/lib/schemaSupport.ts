@@ -83,3 +83,28 @@ export async function getBookingScheduleSupport(): Promise<boolean> {
     return false;
   }
 }
+
+let pointCampaignSupport = false;
+
+/**
+ * 物販の期間限定ポイント（Shop.pointCampaigns 列）が使えるか。
+ * 未適用のあいだは列を SELECT / 書き込みに含めない（P2022 で販売ページ・決済が落ちるため）。
+ * その間は通常の付与率だけで動く。判定に失敗した場合も「未適用」として扱う。
+ */
+export async function getPointCampaignSupport(): Promise<boolean> {
+  if (pointCampaignSupport) return true;
+  try {
+    const [row] = await db.$queryRaw<{ n: number }[]>`
+      SELECT COUNT(*)::int AS "n"
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'Shop'
+        AND column_name = 'pointCampaigns'
+    `;
+    const ready = Number(row?.n ?? 0) === 1;
+    if (ready) pointCampaignSupport = true;
+    return ready;
+  } catch {
+    return false;
+  }
+}

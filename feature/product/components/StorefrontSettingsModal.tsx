@@ -7,6 +7,25 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { saveStorefrontSettings } from "@/feature/product/actions/productActions";
 import type { ShopRetail } from "@/feature/order/services/getShopRetail";
+import {
+  PointCampaignEditor,
+  rowsToCampaigns,
+  toCampaignRows,
+  type CampaignRow,
+} from "@/feature/product/components/PointCampaignEditor";
+import { formatYen } from "@/helper/utils/retail";
+
+/** 入力中の送料設定を文章にする（お客様にどう見えるかの確認用）。 */
+function shippingSummary(feeText: string, thresholdText: string): string {
+  const fee = Number(feeText.trim() || "0");
+  const threshold = Number(thresholdText.trim() || "0");
+  if (!Number.isFinite(fee) || !Number.isFinite(threshold)) return "";
+  if (fee <= 0) return "配送はいつでも送料無料です。";
+  if (threshold > 0) {
+    return `税込${formatYen(threshold)}以上のお買い上げで送料無料、それ未満は送料${formatYen(fee)}です。`;
+  }
+  return `配送は一律で送料${formatYen(fee)}です。`;
+}
 
 export function StorefrontSettingsModal({
   open,
@@ -32,11 +51,19 @@ export function StorefrontSettingsModal({
     pointRatePercent: String(shop.pointRatePercent),
     allowPointRedeem: shop.allowPointRedeem,
   });
+  const [campaignRows, setCampaignRows] = useState<CampaignRow[]>(() =>
+    toCampaignRows(shop.pointCampaigns),
+  );
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   function submit() {
     setError(null);
+    const campaigns = rowsToCampaigns(campaignRows);
+    if (!campaigns.ok) {
+      setError(campaigns.error);
+      return;
+    }
     const fd = new FormData();
     if (form.storeActive) fd.set("storeActive", "on");
     if (form.allowPointRedeem) fd.set("allowPointRedeem", "on");
@@ -51,6 +78,10 @@ export function StorefrontSettingsModal({
     fd.set("shippingFee", form.shippingFee.trim() || "0");
     fd.set("freeShippingThreshold", form.freeShippingThreshold.trim() || "0");
     fd.set("pointRatePercent", form.pointRatePercent.trim() || "0");
+    // DDL 未適用のあいだは送らない（= サーバー側で変更しない）
+    if (shop.pointCampaignsSupported) {
+      fd.set("pointCampaigns", JSON.stringify(campaigns.campaigns));
+    }
 
     startTransition(async () => {
       const res = await saveStorefrontSettings(null, fd);
@@ -143,60 +174,86 @@ export function StorefrontSettingsModal({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>配送送料（円）</Label>
-            <Input
-              type="number"
-              inputMode="numeric"
-              value={form.shippingFee}
-              onChange={(e) => set("shippingFee", e.target.value)}
-              min={0}
-            />
-            <p className="mt-1 text-xs text-faint">0で送料無料</p>
+        <section className="space-y-3 rounded-xl border border-line p-3">
+          <h3 className="text-sm font-semibold text-ink">送料</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>配送送料（円）</Label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={form.shippingFee}
+                onChange={(e) => set("shippingFee", e.target.value)}
+                placeholder="780"
+                min={0}
+              />
+              <p className="mt-1 text-xs text-faint">0で常に送料無料</p>
+            </div>
+            <div>
+              <Label>送料無料になる金額（円）</Label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={form.freeShippingThreshold}
+                onChange={(e) => set("freeShippingThreshold", e.target.value)}
+                placeholder="10000"
+                min={0}
+              />
+              <p className="mt-1 text-xs text-faint">税込合計がこの金額以上で無料。0で無効</p>
+            </div>
           </div>
+          <p className="rounded-lg bg-elevated px-3 py-2 text-xs text-muted">
+            {shippingSummary(form.shippingFee, form.freeShippingThreshold)}
+            店頭受取は送料がかかりません。
+          </p>
+        </section>
+
+        <section className="space-y-3 rounded-xl border border-line p-3">
+          <h3 className="text-sm font-semibold text-ink">ポイント</h3>
           <div>
-            <Label>ポイント付与率（%）</Label>
+            <Label>通常のポイント付与率（%）</Label>
             <Input
               type="number"
               inputMode="numeric"
               value={form.pointRatePercent}
               onChange={(e) => set("pointRatePercent", e.target.value)}
+              placeholder="3"
               min={0}
               max={100}
+              className="max-w-[8rem]"
             />
             <p className="mt-1 text-xs text-faint">
-              税抜小計の％を付与。0で無効（1pt=1円）
+              税抜小計（値引き後）の％を付与。0で付与なし（1pt=1円）
             </p>
           </div>
-        </div>
 
-        <div>
-          <Label>送料無料になる購入金額（円）</Label>
-          <Input
-            type="number"
-            inputMode="numeric"
-            value={form.freeShippingThreshold}
-            onChange={(e) => set("freeShippingThreshold", e.target.value)}
-            min={0}
-          />
-          <p className="mt-1 text-xs text-faint">
-            税込のお買い上げ合計がこの金額以上で送料無料。0で無効。
-          </p>
-        </div>
+          {shop.pointCampaignsSupported ? (
+            <PointCampaignEditor
+              rows={campaignRows}
+              onChange={setCampaignRows}
+              baseRatePercent={form.pointRatePercent}
+            />
+          ) : (
+            <p className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+              期間限定ポイントは、データベースの更新（prisma/manual-migrations.sql）が未適用のためまだ使えません。再デプロイすると使えるようになります。
+            </p>
+          )}
 
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={form.allowPointRedeem}
-            onChange={(e) => set("allowPointRedeem", e.target.checked)}
-            className="h-4 w-4 accent-accent"
-          />
-          販売ページでのポイント利用（1pt=1円の値引き）を許可する
-        </label>
-        <p className="-mt-2 pl-6 text-xs text-faint">
-          オフにしてもポイントは貯まります（利用は店頭のみ）。会員確認は会員番号（またはメール）＋電話番号で行います。
-        </p>
+          <div>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={form.allowPointRedeem}
+                onChange={(e) => set("allowPointRedeem", e.target.checked)}
+                className="h-4 w-4 accent-accent"
+              />
+              販売ページでのポイント利用（1pt=1円の値引き）を許可する
+            </label>
+            <p className="mt-1 pl-6 text-xs text-faint">
+              オフにしてもポイントは貯まります（利用は店頭のみ）。会員確認は会員番号（またはメール）＋電話番号で行います。
+            </p>
+          </div>
+        </section>
 
         <label className="flex items-center gap-2 text-sm text-ink">
           <input

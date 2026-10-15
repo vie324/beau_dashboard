@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  MAX_POINT_CAMPAIGNS,
+  POINT_CAMPAIGN_LABEL_MAX,
+  isYmd,
+} from "@/helper/utils/pointCampaign";
 
 // z.coerce.boolean() は "false" 等の非空文字列も true にしてしまうため使わない。
 // チェックボックス由来の値（"on"/"true"/true/"1"）だけを true とみなす。
@@ -80,6 +85,53 @@ export const stockAdjustSchema = z.object({
   reason: z.string().trim().max(200).optional().nullable(),
 });
 
+/** 期間限定ポイント1件（形式と意味は helper/utils/pointCampaign.ts）。 */
+export const pointCampaignSchema = z
+  .object({
+    label: z
+      .string()
+      .trim()
+      .max(
+        POINT_CAMPAIGN_LABEL_MAX,
+        `期間限定ポイントの名前は${POINT_CAMPAIGN_LABEL_MAX}文字以内で入力してください`,
+      )
+      .default(""),
+    ratePercent: z
+      .number({
+        required_error: "期間限定ポイントの付与率を入力してください",
+        invalid_type_error: "期間限定ポイントの付与率は数字で入力してください",
+      })
+      .int("期間限定ポイントの付与率は整数で入力してください")
+      .min(0, "期間限定ポイントの付与率は0〜100%で入力してください")
+      .max(100, "期間限定ポイントの付与率は0〜100%で入力してください"),
+    startDate: z
+      .string({ required_error: "期間限定ポイントの開始日を入力してください" })
+      .refine(isYmd, "期間限定ポイントの開始日を入力してください"),
+    endDate: z
+      .string({ required_error: "期間限定ポイントの終了日を入力してください" })
+      .refine(isYmd, "期間限定ポイントの終了日を入力してください"),
+  })
+  .refine((c) => c.startDate <= c.endDate, {
+    message: "期間限定ポイントの終了日は開始日以降の日付にしてください",
+  });
+
+export const pointCampaignsSchema = z
+  .array(pointCampaignSchema)
+  .max(
+    MAX_POINT_CAMPAIGNS,
+    `期間限定ポイントは${MAX_POINT_CAMPAIGNS}件まで登録できます`,
+  );
+
+/** フォームからは JSON 文字列で届く。読めなければ検証エラーにする。 */
+const pointCampaignsJson = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+}, pointCampaignsSchema);
+
 export const storefrontSettingsSchema = z.object({
   storeActive: boolish.optional().default(false),
   storeSlug: z
@@ -103,6 +155,8 @@ export const storefrontSettingsSchema = z.object({
     .optional()
     .default(0),
   pointRatePercent: z.coerce.number().int().min(0).max(100).optional().default(0),
+  // 未指定 = 変更しない（古い画面から保存されても登録済みの期間限定を消さないため）
+  pointCampaigns: pointCampaignsJson.optional(),
   allowPointRedeem: boolish.optional().default(true),
   storeAnnouncement: z
     .string()

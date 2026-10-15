@@ -80,9 +80,9 @@ async function main() {
       storeTitle: "Beau 銀座本店 物販ストア",
       storeDescription:
         "店頭でも人気のセルフケアグッズをオンラインでも。会員番号のご入力でポイントが貯まります。",
-      shippingFee: 600,
-      freeShippingThreshold: 5000,
-      pointRatePercent: 5,
+      shippingFee: 780,
+      freeShippingThreshold: 10000,
+      pointRatePercent: 3,
       allowPointRedeem: true,
       storeAnnouncement:
         "9月は「腰用サポーター」「温熱インソール」がセール価格。会員確認でポイントがご利用いただけます。",

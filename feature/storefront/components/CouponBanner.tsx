@@ -35,7 +35,7 @@ export function CouponBanner({ coupons }: { coupons: PublicCoupon[] }) {
   }
 
   return (
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
       {coupons.map((c) => {
         const conds: string[] = [];
         if (c.minSubtotal > 0) conds.push(`${formatYen(c.minSubtotal)}以上`);
@@ -43,36 +43,42 @@ export function CouponBanner({ coupons }: { coupons: PublicCoupon[] }) {
         return (
           <div
             key={c.code}
-            className="flex items-center gap-3 rounded-2xl border border-dashed border-accent/60 bg-surface px-4 py-3"
+            className="relative flex items-stretch overflow-hidden rounded-2xl border border-line bg-surface shadow-panel"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <TicketIcon size={20} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-ink">
-                {c.name}
-              </div>
-              <div className="text-xs text-muted">
+            {/* 左: 値引き内容（チケットの半券） */}
+            <div className="flex w-[6.5rem] shrink-0 flex-col items-center justify-center gap-1 bg-accent-soft px-2 py-3 text-accent-hover">
+              <TicketIcon size={18} />
+              <span className="text-center text-xs font-semibold leading-snug [word-break:auto-phrase]">
                 {describeCoupon(c)}
+              </span>
+            </div>
+            {/* 切り取り線 */}
+            <div aria-hidden className="relative w-0 border-l border-dashed border-line">
+              <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full bg-base" />
+              <span className="absolute -bottom-2 -left-2 h-4 w-4 rounded-full bg-base" />
+            </div>
+            <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-sm font-medium leading-snug text-ink">{c.name}</div>
                 {conds.length > 0 && (
-                  <span className="text-faint">・{conds.join("・")}</span>
+                  <div className="mt-0.5 text-[11px] text-faint">{conds.join("・")}</div>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => copy(c.code)}
+                className={
+                  "flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 font-mono text-xs font-semibold tracking-wider transition-colors duration-300 " +
+                  (copied === c.code
+                    ? "border-ok/40 bg-ok/10 text-ok"
+                    : "border-accent/40 text-accent-hover hover:bg-accent hover:text-accent-fg")
+                }
+                aria-label={`クーポンコード ${c.code} をコピー`}
+              >
+                {copied === c.code ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                {copied === c.code ? "コピー済" : c.code}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => copy(c.code)}
-              className={
-                "flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 font-mono text-xs font-semibold tracking-wider transition-colors " +
-                (copied === c.code
-                  ? "border-ok/40 bg-ok/10 text-ok"
-                  : "border-accent/40 bg-accent-soft text-accent-fg hover:border-accent")
-              }
-              aria-label={`クーポンコード ${c.code} をコピー`}
-            >
-              {copied === c.code ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-              {copied === c.code ? "コピー済" : c.code}
-            </button>
           </div>
         );
       })}

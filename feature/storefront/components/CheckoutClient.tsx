@@ -532,7 +532,12 @@ export function CheckoutClient({
                   )}
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setShowVerify(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 whitespace-nowrap rounded-full px-4"
+                onClick={() => setShowVerify(true)}
+              >
                 会員確認する
               </Button>
             </div>
@@ -714,7 +719,7 @@ export function CheckoutClient({
 
       {/* 注文サマリ */}
       <aside className="mt-6 lg:sticky lg:top-24 lg:mt-0">
-        <div className="rounded-2xl border border-line bg-surface p-5 shadow-panel">
+        <div className="rounded-[1.5rem] border border-line/80 bg-surface p-6 shadow-panel">
           <h2 className="text-sm font-semibold text-ink">お支払い金額</h2>
           <dl className="mt-3 space-y-1.5 text-sm">
             <Row label="商品合計（税込）" value={formatYen(totals.itemsTotal)} />
@@ -744,6 +749,7 @@ export function CheckoutClient({
           {shop.pointRatePercent > 0 && (
             <p className="mt-1 text-right text-xs text-accent">
               このご注文で +{totals.pointsEarned.toLocaleString("ja-JP")}pt
+              {shop.pointCampaign && `（期間限定 ${shop.pointRatePercent}%）`}
               {member ? "" : "（会員番号の入力またはご登録で付与）"}
             </p>
           )}
@@ -754,7 +760,7 @@ export function CheckoutClient({
             </p>
           )}
 
-          <Button className="mt-4 h-12 w-full text-sm" onClick={submit} disabled={pending}>
+          <Button className="mt-5 h-14 w-full rounded-full text-sm tracking-[0.08em]" onClick={submit} disabled={pending}>
             {payLabel}
           </Button>
           <p className="mt-2 text-center text-[11px] leading-relaxed text-faint">
@@ -783,7 +789,7 @@ export function CheckoutClient({
               {formatYen(totals.total)}
             </div>
           </div>
-          <Button className="h-11 flex-1" onClick={submit} disabled={pending}>
+          <Button className="h-12 flex-1 rounded-full" onClick={submit} disabled={pending}>
             {payLabel}
           </Button>
         </div>
@@ -806,12 +812,12 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-surface p-4 shadow-panel sm:p-5">
+    <section className="rounded-[1.5rem] border border-line/80 bg-surface p-5 shadow-panel sm:p-6">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-surface">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent font-accent text-sm font-semibold lining-nums text-accent-fg">
           {n}
         </span>
-        <h2 className="text-sm font-semibold text-ink">{title}</h2>
+        <h2 className="font-display text-[15px] font-semibold tracking-[0.08em] text-ink">{title}</h2>
         {badge && (
           <span
             className={

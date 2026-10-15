@@ -67,6 +67,48 @@ describe("storefrontSettingsSchema.storeActive (boolean coercion 回帰防止)",
   it("付与率は100超で失敗", () => {
     expect(storefrontSettingsSchema.safeParse({ pointRatePercent: 101 }).success).toBe(false);
   });
+
+  describe("期間限定ポイント（pointCampaigns）", () => {
+    const autumn = {
+      label: "秋のポイントアップ",
+      ratePercent: 10,
+      startDate: "2026-11-01",
+      endDate: "2026-11-30",
+    };
+    it("未指定なら undefined（= 登録済みを変更しない）", () => {
+      expect(storefrontSettingsSchema.parse({}).pointCampaigns).toBeUndefined();
+    });
+    it("フォームの JSON 文字列を配列にする", () => {
+      const r = storefrontSettingsSchema.parse({ pointCampaigns: JSON.stringify([autumn]) });
+      expect(r.pointCampaigns).toEqual([autumn]);
+    });
+    it("空配列も受け付ける（= すべて削除）", () => {
+      expect(storefrontSettingsSchema.parse({ pointCampaigns: "[]" }).pointCampaigns).toEqual([]);
+    });
+    it("名前は省略可", () => {
+      const { label: _label, ...noLabel } = autumn;
+      const r = storefrontSettingsSchema.parse({ pointCampaigns: JSON.stringify([noLabel]) });
+      expect(r.pointCampaigns?.[0].label).toBe("");
+    });
+    it("壊れた JSON・付与率の範囲外・日付の逆転は失敗", () => {
+      const bad = (v: unknown) =>
+        storefrontSettingsSchema.safeParse({ pointCampaigns: JSON.stringify(v) }).success;
+      expect(storefrontSettingsSchema.safeParse({ pointCampaigns: "{oops" }).success).toBe(false);
+      expect(bad([{ ...autumn, ratePercent: 101 }])).toBe(false);
+      expect(bad([{ ...autumn, ratePercent: -1 }])).toBe(false);
+      expect(bad([{ ...autumn, ratePercent: 2.5 }])).toBe(false);
+      expect(bad([{ ...autumn, startDate: "2026-12-01" }])).toBe(false);
+      expect(bad([{ ...autumn, endDate: "" }])).toBe(false);
+      expect(bad([{ ...autumn, startDate: "2026-02-30" }])).toBe(false);
+    });
+    it("エラーの path から何件目かが分かる", () => {
+      const r = storefrontSettingsSchema.safeParse({
+        pointCampaigns: JSON.stringify([autumn, { ...autumn, ratePercent: 200 }]),
+      });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0].path.slice(0, 2)).toEqual(["pointCampaigns", 1]);
+    });
+  });
 });
 
 describe("stockAdjustSchema", () => {

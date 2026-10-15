@@ -48,17 +48,35 @@ export default async function StorefrontPage({
 
   if (!data) return <StoreUnavailable />;
 
+  // ヒーローの写真: 設定したヒーロー画像 → おすすめ商品 → その他の商品（最大3枚・重複なし）
+  const productImages = [
+    ...data.products.filter((p) => p.isFeatured),
+    ...data.products.filter((p) => !p.isFeatured),
+  ].map((p) => parseImageUrls(p.imageUrls)[0]);
+  const heroImages = [
+    ...new Set(
+      [data.shop.storeHeroImageUrl, ...productImages].filter(
+        (u): u is string => Boolean(u),
+      ),
+    ),
+  ].slice(0, 3);
+
   return (
     <StoreShell slug={slug} shop={data.shop}>
-      <StoreHero shop={data.shop} coupons={data.coupons} />
+      <StoreHero
+        shop={data.shop}
+        coupons={data.coupons}
+        images={heroImages}
+        hasPicks={data.products.some((p) => p.isFeatured)}
+      />
 
       {sp.canceled && (
-        <p className="mt-4 rounded-xl border border-warn/30 bg-warn/10 px-4 py-2 text-center text-sm text-warn">
+        <p className="mt-4 rounded-2xl border border-warn/30 bg-warn/10 px-4 py-2.5 text-center text-sm text-warn">
           決済がキャンセルされました。カートの内容は保持されています。
         </p>
       )}
 
-      <div className="mt-8">
+      <div className="mt-14 sm:mt-20">
         <StorefrontClient data={data} openCartInitially={sp.cart === "open"} />
       </div>
     </StoreShell>

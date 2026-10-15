@@ -70,12 +70,18 @@ model Shop {
   storeActive       Boolean   @default(false)
   storeTitle        String?
   storeDescription  String?
-  // 配送送料（円）。0 で送料無料。
-  shippingFee       Int       @default(0)
-  // 送料無料になる税込購入額のしきい値（円）。0 で無効。
-  freeShippingThreshold Int   @default(0)
-  // ポイント: 購入小計（税抜）に対する付与率(%)。0 で無効。1pt = 1円 として精算で利用。
-  pointRatePercent  Int       @default(0)
+  // 配送送料（円）。0 で送料無料。新規店舗は 780 円。
+  shippingFee       Int       @default(780)
+  // 送料無料になる税込購入額のしきい値（円）。0 で無効。新規店舗は 10,000 円以上で無料。
+  freeShippingThreshold Int   @default(10000)
+  // ポイント: 購入小計（税抜）に対する通常の付与率(%)。0 で無効。1pt = 1円 として精算で利用。
+  // 新規店舗は 3%。期間限定で変えるときは pointCampaigns を使う。
+  pointRatePercent  Int       @default(3)
+  // 期間限定ポイント（JSON TEXT）。期間中は pointRatePercent の代わりにこの付与率を使う。
+  // e.g. [{"label":"秋のポイントアップ","ratePercent":10,"startDate":"2026-11-01","endDate":"2026-11-30"}]
+  // 期間は JST の日付で両端を含む。重なったら高い方。null = 期間限定なし。
+  // 形式と判定は helper/utils/pointCampaign.ts。
+  pointCampaigns    String?
   // 特定商取引法に基づく表記（JSON TEXT）。販売事業者名・所在地・連絡先・返品条件 等。
   legalInfo         String?
   // 購入時のポイント利用（1pt=1円の値引き）を公開ページで許可するか。

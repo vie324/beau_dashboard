@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import tailwindConfig from "@/tailwind.config";
 import {
   STANDARD_CARD_COLORS,
   findStandardCardColor,
@@ -29,8 +30,16 @@ function over(fg: string, bg: string, alpha: number): string {
     .join("")}`;
 }
 
-const ink = (tailwindConfig.theme?.extend?.colors as Record<string, string>)
-  .ink;
+// 管理画面の本文色。色は app/globals.css の :root に "R G B" の CSS 変数で定義している
+// （tailwind.config.ts はそれを参照するだけ）ので、そこから読んで #rrggbb にする。
+function adminColor(name: string): string {
+  const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
+  const root = css.match(/:root\s*\{[^}]*\}/)?.[0] ?? "";
+  const m = root.match(new RegExp(`--c-${name}:\\s*(\\d+) (\\d+) (\\d+);`));
+  if (!m) return "";
+  return `#${m.slice(1, 4).map((v) => Number(v).toString(16).padStart(2, "0")).join("")}`;
+}
+const ink = adminColor("ink");
 
 describe("予約カードの標準カラー", () => {
   it("依頼のあった 黄色・赤・青・緑・茶色・ピンク がそろっている", () => {

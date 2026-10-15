@@ -21,6 +21,7 @@ export default async function MemberPage({
       <MemberClient
         slug={slug}
         pointRatePercent={data.shop.pointRatePercent}
+        pointCampaign={data.shop.pointCampaign}
         allowPointRedeem={data.shop.allowPointRedeem}
       />
     </StoreShell>

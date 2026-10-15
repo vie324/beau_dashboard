@@ -12,6 +12,11 @@ import {
 } from "@/helper/utils/retail";
 import { toLocalDateString } from "@/helper/utils/time";
 import {
+  parsePointCampaigns,
+  resolvePointRate,
+} from "@/helper/utils/pointCampaign";
+import { getPointCampaignSupport } from "@/helper/lib/schemaSupport";
+import {
   finalizeOrderPaid,
   releaseOrderReservation,
 } from "@/feature/order/lib/finalizeOrder";
@@ -58,6 +63,7 @@ export async function createCheckout(
   const data = parsed.data;
 
   // 店舗（公開中）を解決
+  const withCampaigns = await getPointCampaignSupport();
   const shop = await db.shop.findFirst({
     where: { storeSlug: data.slug, storeActive: true, deletedAt: null },
     select: {
@@ -65,10 +71,17 @@ export async function createCheckout(
       shippingFee: true,
       freeShippingThreshold: true,
       pointRatePercent: true,
+      pointCampaigns: withCampaigns,
       allowPointRedeem: true,
     },
   });
   if (!shop) return { ok: false, error: "この販売ページはご利用いただけません" };
+  // 付与率は注文作成時点のもの（期間限定の実施中ならその率）で確定し、
+  // 注文の pointsEarned に保存する（決済完了が期間終了後になっても変わらない）。
+  const pointRatePercent = resolvePointRate(
+    shop.pointRatePercent,
+    parsePointCampaigns(withCampaigns ? shop.pointCampaigns : null),
+  ).ratePercent;
 
   if (data.fulfillment === "shipping" && !data.shippingAddress) {
     return { ok: false, error: "配送先住所を入力してください" };
@@ -160,7 +173,7 @@ export async function createCheckout(
   const pre = computeTotals(
     lines,
     baseShipping,
-    shop.pointRatePercent,
+    pointRatePercent,
     shop.freeShippingThreshold,
     { couponDiscount },
   );
@@ -170,7 +183,7 @@ export async function createCheckout(
   const totals = computeTotals(
     lines,
     baseShipping,
-    shop.pointRatePercent,
+    pointRatePercent,
     shop.freeShippingThreshold,
     { couponDiscount, pointsUsed },
   );

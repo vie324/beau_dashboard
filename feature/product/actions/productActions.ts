@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/helper/lib/db";
 import { getActiveShopId } from "@/helper/lib/shop-context";
 import { getCurrentUser } from "@/helper/lib/auth";
+import { getPointCampaignSupport } from "@/helper/lib/schemaSupport";
+import { serializePointCampaigns } from "@/helper/utils/pointCampaign";
 import {
   productSchema,
   categorySchema,
@@ -283,13 +285,29 @@ export async function saveStorefrontSettings(
   for (const k of Object.keys(raw)) if (raw[k] === "") delete raw[k];
   const parsed = storefrontSettingsSchema.safeParse(raw);
   if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    // 期間限定ポイントは複数行あるので、何件目の入力かを添える
+    const row =
+      issue?.path[0] === "pointCampaigns" && typeof issue.path[1] === "number"
+        ? `（${issue.path[1] + 1}件目）`
+        : "";
     return {
       ok: false,
-      error: parsed.error.issues[0]?.message ?? "入力内容を確認してください",
+      error: issue ? `${issue.message}${row}` : "入力内容を確認してください",
     };
   }
   const input = parsed.data;
   const shopId = await getActiveShopId();
+
+  // 期間限定ポイントの列は DDL 未適用の本番DBには存在しない。書き込みに混ぜると
+  // 設定の保存ごと P2022 で失敗するため、列がある場合だけ含める。
+  // フォームから届いていない（古い画面）ときは登録済みの内容を変えない。
+  const campaignSupport =
+    input.pointCampaigns !== undefined ? await getPointCampaignSupport() : true;
+  const campaignData =
+    input.pointCampaigns !== undefined && campaignSupport
+      ? { pointCampaigns: serializePointCampaigns(input.pointCampaigns) }
+      : {};
 
   // slug 重複チェック。storeSlug はグローバル @unique なので、ソフトデリート済み
   // 店舗も含めて衝突を検知する（deletedAt で絞らない）。
@@ -316,6 +334,7 @@ export async function saveStorefrontSettings(
         shippingFee: input.shippingFee ?? 0,
         freeShippingThreshold: input.freeShippingThreshold ?? 0,
         pointRatePercent: input.pointRatePercent ?? 0,
+        ...campaignData,
         allowPointRedeem: input.allowPointRedeem ?? true,
         storeAnnouncement: input.storeAnnouncement ?? null,
         storeHeroImageUrl: input.storeHeroImageUrl ?? null,
@@ -332,6 +351,14 @@ export async function saveStorefrontSettings(
     return { ok: false, error: msg };
   }
   revalidatePath("/products");
+  if (!campaignSupport && (input.pointCampaigns?.length ?? 0) > 0) {
+    // ほかの設定は保存できているので、期間限定ポイントだけ保存できなかったことを伝える。
+    return {
+      ok: false,
+      error:
+        "販売ページ設定は保存しました。期間限定ポイントはデータベースの更新（prisma/manual-migrations.sql）が未適用のため保存されていません",
+    };
+  }
   return { ok: true };
 }
 
