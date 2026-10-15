@@ -1,6 +1,12 @@
 import { db } from "@/helper/lib/db";
+import { getPointCampaignSupport } from "@/helper/lib/schemaSupport";
 import { getPublicCoupons } from "@/feature/coupon/services/getCoupons";
 import { discountPercent } from "@/helper/utils/retail";
+import {
+  parsePointCampaigns,
+  pointCampaignLabel,
+  resolvePointRate,
+} from "@/helper/utils/pointCampaign";
 
 // 「人気ランキング」の集計期間（日）。決済済み注文の販売数量を商品ごとに合計する。
 const RANKING_DAYS = 90;
@@ -8,7 +14,8 @@ const RANKING_TOP = 3;
 
 /** 公開ストアフロント（/shop/<slug>）のデータを取得。非公開・無効なら null。 */
 export async function getStorefront(slug: string) {
-  const shop = await db.shop.findFirst({
+  const withCampaigns = await getPointCampaignSupport();
+  const row = await db.shop.findFirst({
     where: {
       storeSlug: slug,
       storeActive: true,
@@ -26,13 +33,37 @@ export async function getStorefront(slug: string) {
       shippingFee: true,
       freeShippingThreshold: true,
       pointRatePercent: true,
+      pointCampaigns: withCampaigns,
       allowPointRedeem: true,
       legalInfo: true,
       address: true,
       phone: true,
     },
   });
-  if (!shop || !shop.storeSlug) return null;
+  if (!row || !row.storeSlug) return null;
+
+  // ポイント付与率は「いま」の率（期間限定の実施中ならその率）に置き換えて渡す。
+  // 販売ページの表示（カード・カート・決済画面）はすべてこの値で計算する。
+  const { pointCampaigns, ...shopRow } = row;
+  const rate = resolvePointRate(
+    row.pointRatePercent,
+    parsePointCampaigns(withCampaigns ? pointCampaigns : null),
+  );
+  const shop = {
+    ...shopRow,
+    pointRatePercent: rate.ratePercent,
+    // 通常より高い付与率で実施中のときだけ「期間限定」として打ち出す
+    // （下げる設定のときは、下がった率を通常どおり表示するだけ）。
+    pointCampaign:
+      rate.campaign && rate.ratePercent > rate.baseRatePercent
+        ? {
+            label: pointCampaignLabel(rate.campaign),
+            ratePercent: rate.ratePercent,
+            baseRatePercent: rate.baseRatePercent,
+            endDate: rate.campaign.endDate,
+          }
+        : null,
+  };
 
   const [products, categories] = await Promise.all([
     db.product.findMany({

@@ -279,3 +279,14 @@ CREATE INDEX IF NOT EXISTS "Notification_shopId_createdAt_idx" ON "Notification"
 -- 適用しただけでは既存リンクの挙動は変わらない。
 -- 未適用のあいだは予約リンク画面の「受付する日時」が無効になる（公開ページは従来どおり動く）。
 ALTER TABLE "BookingLink" ADD COLUMN IF NOT EXISTS "schedule" TEXT;
+
+-- 2026-10: 物販の期間限定ポイント（Shop.pointCampaigns）と送料・付与率の初期値
+-- 期間限定ポイントは JSON (TEXT) で保存する。NULL = 期間限定なし（通常の付与率のみ）なので、
+-- 適用しただけでは既存店舗の付与ポイントは変わらない。
+-- 未適用のあいだは販売ページ設定の「期間限定ポイント」が保存できない（販売・決済は通常の付与率で動く）。
+ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "pointCampaigns" TEXT;
+-- 新しく作る店舗の初期値（送料 780 円・10,000 円以上で送料無料・通常 3% 付与）。
+-- 列の既定値を変えるだけで、既存店舗の設定値は書き換えない。
+ALTER TABLE "Shop" ALTER COLUMN "shippingFee" SET DEFAULT 780;
+ALTER TABLE "Shop" ALTER COLUMN "freeShippingThreshold" SET DEFAULT 10000;
+ALTER TABLE "Shop" ALTER COLUMN "pointRatePercent" SET DEFAULT 3;

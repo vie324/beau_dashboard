@@ -27,6 +27,8 @@ import {
   FULFILLMENT_LABELS,
   POINT_TX_LABELS,
 } from "@/helper/utils/retail";
+import { formatMonthDay } from "@/helper/utils/pointCampaign";
+import type { StorefrontShop } from "@/feature/storefront/services/getStorefront";
 
 const dtFmt = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
@@ -44,10 +46,13 @@ type Summary = {
 export function MemberClient({
   slug,
   pointRatePercent,
+  pointCampaign,
   allowPointRedeem,
 }: {
   slug: string;
   pointRatePercent: number;
+  /** 実施中の期間限定ポイント（通常より高いときだけ） */
+  pointCampaign: StorefrontShop["pointCampaign"];
   allowPointRedeem: boolean;
 }) {
   // undefined = 判定前（SSR/初回描画）, null = 未確認
@@ -117,6 +122,7 @@ export function MemberClient({
               <li className="flex items-center gap-2 rounded-xl bg-accent-soft/60 px-3 py-2 text-xs text-accent-fg">
                 <CoinIcon size={16} className="text-accent" />
                 お買い物で{pointRatePercent}%のポイントが貯まります
+                {pointCampaign && `（期間限定・${formatMonthDay(pointCampaign.endDate)}まで）`}
               </li>
             )}
             <li className="flex items-center gap-2 rounded-xl bg-accent-soft/60 px-3 py-2 text-xs text-accent-fg">

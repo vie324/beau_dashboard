@@ -7,6 +7,11 @@ import {
   verifyMemberToken,
 } from "@/feature/storefront/lib/memberToken";
 import { normalizePhoneDigits, toHalfWidthAlnum } from "@/helper/utils/retail";
+import {
+  parsePointCampaigns,
+  resolvePointRate,
+} from "@/helper/utils/pointCampaign";
+import { getPointCampaignSupport } from "@/helper/lib/schemaSupport";
 
 const verifySchema = z.object({
   slug: z.string().trim().min(1),
@@ -164,9 +169,15 @@ export async function getMemberSummary(input: {
   if (!slug || !claims) {
     return { ok: false, error: "会員確認の有効期限が切れました。もう一度会員確認をしてください" };
   }
+  const withCampaigns = await getPointCampaignSupport();
   const shop = await db.shop.findFirst({
     where: { storeSlug: slug, storeActive: true, deletedAt: null },
-    select: { id: true, pointRatePercent: true, allowPointRedeem: true },
+    select: {
+      id: true,
+      pointRatePercent: true,
+      pointCampaigns: withCampaigns,
+      allowPointRedeem: true,
+    },
   });
   if (!shop || shop.id !== claims.shopId) {
     return { ok: false, error: "この販売ページはご利用いただけません" };
@@ -238,7 +249,11 @@ export async function getMemberSummary(input: {
       items: o.items,
     })),
     shop: {
-      pointRatePercent: shop.pointRatePercent,
+      // いまの付与率（期間限定の実施中ならその率）
+      pointRatePercent: resolvePointRate(
+        shop.pointRatePercent,
+        parsePointCampaigns(withCampaigns ? shop.pointCampaigns : null),
+      ).ratePercent,
       allowPointRedeem: shop.allowPointRedeem,
     },
   };

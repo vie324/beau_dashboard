@@ -209,6 +209,7 @@ export function ProductDetailClient({
                 <span className="inline-flex items-center gap-1 text-accent">
                   <CoinIcon size={13} />
                   {shop.pointRatePercent}%ポイント還元
+                  {shop.pointCampaign && "（期間限定）"}
                 </span>
               )}
             </div>

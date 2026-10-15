@@ -744,6 +744,7 @@ export function CheckoutClient({
           {shop.pointRatePercent > 0 && (
             <p className="mt-1 text-right text-xs text-accent">
               このご注文で +{totals.pointsEarned.toLocaleString("ja-JP")}pt
+              {shop.pointCampaign && `（期間限定 ${shop.pointRatePercent}%）`}
               {member ? "" : "（会員番号の入力またはご登録で付与）"}
             </p>
           )}

@@ -8,6 +8,7 @@ import {
   SparkleIcon,
 } from "@/feature/storefront/components/icons";
 import { formatYen } from "@/helper/utils/retail";
+import { formatMonthDay } from "@/helper/utils/pointCampaign";
 
 /** 販売ページ上部のヒーロー（店名・紹介文・特典）+ お知らせ + 公開クーポン。 */
 export function StoreHero({
@@ -37,7 +38,9 @@ export function StoreHero({
   if (shop.pointRatePercent > 0) {
     benefits.push({
       icon: <CoinIcon size={15} />,
-      label: `ポイント${shop.pointRatePercent}%還元`,
+      label: shop.pointCampaign
+        ? `期間限定 ポイント${shop.pointRatePercent}%還元`
+        : `ポイント${shop.pointRatePercent}%還元`,
     });
   }
   if (shop.allowPointRedeem) {
@@ -48,6 +51,7 @@ export function StoreHero({
   }
 
   const hero = shop.storeHeroImageUrl;
+  const campaign = shop.pointCampaign;
 
   return (
     <div>
@@ -99,6 +103,18 @@ export function StoreHero({
           </ul>
         </div>
       </section>
+
+      {campaign && (
+        <p className="mt-3 flex items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-center text-sm font-medium leading-relaxed text-accent-fg">
+          <CoinIcon size={16} className="shrink-0" />
+          <span>
+            {campaign.label}：{formatMonthDay(campaign.endDate)}まで、お買い物でポイント
+            <span className="mx-0.5 text-lg font-bold leading-none">{campaign.ratePercent}%</span>
+            還元
+            {campaign.baseRatePercent > 0 && `（通常${campaign.baseRatePercent}%）`}
+          </span>
+        </p>
+      )}
 
       {shop.storeAnnouncement && (
         <p className="mt-3 rounded-2xl border border-accent/30 bg-accent-soft/70 px-4 py-3 text-center text-sm leading-relaxed text-accent-fg">

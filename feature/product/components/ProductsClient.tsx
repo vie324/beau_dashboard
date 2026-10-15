@@ -27,6 +27,12 @@ import {
   discountPercent,
   STOCK_MOVEMENT_LABELS,
 } from "@/helper/utils/retail";
+import {
+  formatCampaignPeriod,
+  nextPointCampaign,
+  pointCampaignLabel,
+  resolvePointRate,
+} from "@/helper/utils/pointCampaign";
 
 const dtFmt = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
@@ -78,6 +84,10 @@ export function ProductsClient({
   const lowStockCount = products.filter((p) => p.lowStock).length;
   const storeUrl = shop.storeSlug ? `${appUrl}/shop/${shop.storeSlug}` : null;
   const activeCoupons = coupons.filter((c) => c.isActive).length;
+  const pointRate = resolvePointRate(shop.pointRatePercent, shop.pointCampaigns);
+  const upcomingCampaign = pointRate.campaign
+    ? null
+    : nextPointCampaign(shop.pointCampaigns);
   const featuredCount = products.filter((p) => p.isFeatured).length;
   const saleCount = products.filter(
     (p) => discountPercent(p.price, p.compareAtPrice) > 0,
@@ -127,6 +137,10 @@ export function ProductsClient({
               {shop.freeShippingThreshold > 0 &&
                 `（${formatYen(shop.freeShippingThreshold)}以上で無料）`}
               {" ／ "}ポイント付与 {shop.pointRatePercent}%
+              {pointRate.campaign &&
+                `（${pointCampaignLabel(pointRate.campaign)} ${pointRate.ratePercent}% 実施中：${formatCampaignPeriod(pointRate.campaign)}）`}
+              {upcomingCampaign &&
+                `（次回 ${pointCampaignLabel(upcomingCampaign)} ${upcomingCampaign.ratePercent}%：${formatCampaignPeriod(upcomingCampaign)}）`}
               {" ／ "}ポイント利用 {shop.allowPointRedeem ? "可" : "店頭のみ"}
               {" ／ "}クーポン {activeCoupons}件有効
             </p>
