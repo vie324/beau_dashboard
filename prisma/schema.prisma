@@ -62,7 +62,9 @@ model Shop {
   // Missing keys fall back to the defaults above.
   hoursByDow        String?
   // JSON (TEXT): specific-date overrides keyed by "YYYY-MM-DD".
-  // e.g. {"2026-05-25":{"type":"closed","note":"祝日"},"2026-05-26":{"type":"morning"},"2026-05-27":{"type":"afternoon"}}
+  // e.g. {"2026-05-25":{"type":"closed","note":"祝日"},"2026-05-26":{"type":"morning"},"2026-05-27":{"type":"afternoon"},
+  //       "2026-12-29":{"type":"custom","openTime":"08:30","closeTime":"15:30","note":"年末特別診療"}}
+  // custom = 特別営業（その日だけの営業時間。breakStart/breakEnd は任意。定休日でも営業日になる）。
   // Priority: dateOverrides > hoursByDow > shop defaults.
   dateOverrides     String?
   // ---- 物販ストアフロント（公開販売ページ /shop/<storeSlug>） ----

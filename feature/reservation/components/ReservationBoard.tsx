@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { statusMeta } from "@/helper/utils/status";
 import { jstMinutesOfDay } from "@/helper/utils/time";
+import { describeDateOverride } from "@/helper/utils/shopHours";
 import { pickVisibleStaffs } from "@/helper/utils/staffWork";
 import { assignLanes } from "@/helper/utils/laneLayout";
 import { DateNav } from "@/feature/reservation/components/DateNav";
@@ -310,6 +311,15 @@ export function ReservationBoard({
         <DateNav date={date} today={today} />
         <div className="flex flex-wrap items-center gap-3">
           <CustomerCodeSearch />
+          {shopHours?.dateOverride && (
+            // 設定 → 特別営業日 / 店舗のカレンダーで、この日だけの設定が入っているとき
+            <span className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent-hover">
+              {describeDateOverride(shopHours.dateOverride)}
+              {shopHours.dateOverride.note
+                ? `・${shopHours.dateOverride.note}`
+                : ""}
+            </span>
+          )}
           {unconfirmed > 0 && (
             <span className="rounded-lg border border-warn/40 bg-warn/10 px-2.5 py-1 text-xs font-medium text-warn">
               未確認 {unconfirmed}件

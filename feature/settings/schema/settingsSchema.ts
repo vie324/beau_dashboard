@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { isYmd } from "@/helper/utils/pointCampaign";
+import { customHoursError } from "@/helper/utils/shopHours";
 
 const id = z.coerce.number().int().positive().optional();
 
@@ -50,6 +52,42 @@ export const shopSchema = z.object({
   notifyManualBooking: bool.default(false),
 });
 export type ShopInput = z.infer<typeof shopSchema>;
+
+// 店舗IDの配列（JSON 文字列 "[1,2]"）。壊れていたら空配列扱い。
+const shopIdList = z.preprocess((v) => {
+  if (typeof v !== "string" || !v) return [];
+  try {
+    return JSON.parse(v);
+  } catch {
+    return [];
+  }
+}, z.array(z.coerce.number().int().positive()).max(200));
+
+// 特別営業日・臨時休診（設定 → 特別営業日）。選んだ店舗の dateOverrides にまとめて書き込む。
+export const specialDaySchema = z
+  .object({
+    date: z.string().refine(isYmd, "日付を選んでください"),
+    type: z.enum(["custom", "closed", "morning", "afternoon"]),
+    openTime: hhmm,
+    closeTime: hhmm,
+    breakStart: hhmm,
+    breakEnd: hhmm,
+    note: z.string().trim().max(100, "メモは100文字以内で入力してください").optional().nullable(),
+    shopIds: shopIdList.refine((ids) => ids.length > 0, "対象の店舗を選んでください"),
+    // 編集のとき: 元の日付と、元の設定が入っていた店舗（日付変更・対象から外した店舗を消すため）
+    prevDate: z
+      .string()
+      .optional()
+      .nullable()
+      .refine((v) => !v || isYmd(v), "日付が正しくありません"),
+    prevShopIds: shopIdList.optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.type !== "custom") return;
+    const msg = customHoursError(v);
+    if (msg) ctx.addIssue({ code: z.ZodIssueCode.custom, message: msg, path: ["openTime"] });
+  });
+export type SpecialDayInput = z.infer<typeof specialDaySchema>;
 
 export const visitSourceSchema = z.object({
   id,
