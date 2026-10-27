@@ -15,23 +15,53 @@ import {
   serializeHoursByDow,
   parseDateOverrides,
   serializeDateOverrides,
+  customHoursError,
+  describeDateOverride,
+  groupDateOverrides,
   type DowOverride,
   type HoursByDow,
   type DateOverride,
   type DateOverrides,
   type DateOverrideType,
+  type DateOverrideGroup,
 } from "@/helper/utils/shopHours";
 
 const DATE_OV_LABEL: Record<DateOverrideType, string> = {
   closed: "全日休",
   morning: "午前休",
   afternoon: "午後休",
+  custom: "特別",
 };
 const DATE_OV_BADGE: Record<DateOverrideType, string> = {
   closed: "border-danger/40 bg-danger/15 text-danger",
   morning: "border-info/40 bg-info/15 text-info",
   afternoon: "border-warn/40 bg-warn/15 text-warn",
+  custom: "border-ok/40 bg-ok/15 text-ok",
 };
+
+// 設定 → 特別営業日 で選べる種類。並びは使う頻度の順。
+const SPECIAL_DAY_TYPES: { type: DateOverrideType; label: string; hint: string }[] = [
+  {
+    type: "custom",
+    label: "特別営業（時間を指定）",
+    hint: "その日だけ、下の時間で予約枠を作ります。定休日に入れるとその日だけ営業日になります。",
+  },
+  {
+    type: "closed",
+    label: "休診（終日）",
+    hint: "その日は終日、予約を受け付けません。",
+  },
+  {
+    type: "morning",
+    label: "午前休",
+    hint: "店舗の休憩終了の時刻から営業します（休憩が未設定の店舗は終日休診）。",
+  },
+  {
+    type: "afternoon",
+    label: "午後休",
+    hint: "店舗の休憩開始の時刻で終了します（休憩が未設定の店舗は終日休診）。",
+  },
+];
 
 const DOW_LABELS: { key: string; label: string }[] = [
   { key: "1", label: "月" },
@@ -56,6 +86,8 @@ import {
   ensureDefaultVisitSources,
   saveCardColorPreset,
   deleteCardColorPreset,
+  saveSpecialDay,
+  deleteSpecialDay,
   type ActionResult,
 } from "@/feature/settings/actions/settingsActions";
 import type {
@@ -67,10 +99,18 @@ import type {
   CardColorPresetRow,
 } from "@/feature/settings/services/getSettingsData";
 
-type Tab = "shops" | "staff" | "equipments" | "menus" | "vsources" | "cardColors";
+type Tab =
+  | "shops"
+  | "specialDays"
+  | "staff"
+  | "equipments"
+  | "menus"
+  | "vsources"
+  | "cardColors";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "shops", label: "店舗" },
+  { key: "specialDays", label: "特別営業日" },
   { key: "staff", label: "スタッフ" },
   { key: "equipments", label: "設備" },
   { key: "menus", label: "メニュー" },
@@ -103,6 +143,12 @@ export function SettingsClient({
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [modal, setModal] = useState<ReactNode | null>(null);
+  const todayYmd = useMemo(() => toLocalDateString(), []);
+  // 今日以降の特別営業日・休診日（全店舗分を「日付 × 同じ内容」でまとめたもの）
+  const specialDays = useMemo(
+    () => groupDateOverrides(shops, todayYmd),
+    [shops, todayYmd],
+  );
 
   const run = (fn: () => Promise<ActionResult>, onOk?: () => void) =>
     startTransition(async () => {
@@ -192,6 +238,66 @@ export function SettingsClient({
               onDelete={() => {
                 if (confirm(`「${s.name}」を削除しますか？`))
                   run(() => deleteShop(s.id));
+              }}
+              pending={pending}
+            />
+          ))}
+        </Section>
+      )}
+
+      {tab === "specialDays" && (
+        <Section
+          title="特別営業日・臨時休診"
+          hint="年末年始・祝日など、特定の日だけ営業時間を変える／休診にする設定です。複数の店舗にまとめて登録でき、その日の予約表とネット予約の枠は登録した時間で作られます。"
+          onAdd={() =>
+            setModal(
+              <SpecialDayForm
+                shops={shops}
+                onClose={() => setModal(null)}
+                onSubmit={(fd) => submitForm(saveSpecialDay, fd)}
+                pending={pending}
+              />,
+            )
+          }
+        >
+          {specialDays.length === 0 && (
+            <Empty>今日以降の特別営業日・休診日はありません</Empty>
+          )}
+          {specialDays.map((g) => (
+            <Row
+              key={`${g.date}|${JSON.stringify(g.override)}`}
+              title={
+                <span className="flex flex-wrap items-center gap-2">
+                  {specialDayDateLabel(g.date, todayYmd)}
+                  <Badge className={DATE_OV_BADGE[g.override.type]}>
+                    {describeDateOverride(g.override)}
+                  </Badge>
+                </span>
+              }
+              meta={
+                <span className="text-faint">
+                  対象: {shopNamesLabel(g.shopIds, shops)}
+                  {g.override.note ? ` ・ ${g.override.note}` : ""}
+                </span>
+              }
+              onEdit={() =>
+                setModal(
+                  <SpecialDayForm
+                    shops={shops}
+                    initial={g}
+                    onClose={() => setModal(null)}
+                    onSubmit={(fd) => submitForm(saveSpecialDay, fd)}
+                    pending={pending}
+                  />,
+                )
+              }
+              onDelete={() => {
+                if (
+                  confirm(
+                    `${formatJpDate(g.date)}の「${describeDateOverride(g.override)}」を削除しますか？\n対象: ${shopNamesLabel(g.shopIds, shops)}\nその日は通常の営業時間に戻ります。`,
+                  )
+                )
+                  run(() => deleteSpecialDay(g.date, g.shopIds));
               }}
               pending={pending}
             />
@@ -631,6 +737,28 @@ function Field({
   );
 }
 
+/** 特別営業日一覧の日付表示。今年以外は年も付ける（例: 2027年1月4日(月)）。 */
+function specialDayDateLabel(date: string, today: string): string {
+  const label = formatJpDate(date);
+  return date.slice(0, 4) === today.slice(0, 4)
+    ? label
+    : `${Number(date.slice(0, 4))}年${label}`;
+}
+
+/** 対象店舗の表示。全店舗が対象なら「全店舗」。 */
+function shopNamesLabel(
+  shopIds: number[],
+  shops: { id: number; name: string }[],
+): string {
+  if (shops.length > 1 && shops.every((s) => shopIds.includes(s.id))) {
+    return `全店舗（${shops.length}店舗）`;
+  }
+  return shops
+    .filter((s) => shopIds.includes(s.id))
+    .map((s) => s.name)
+    .join("・");
+}
+
 /* ---------------- forms ---------------- */
 
 function ShopForm({
@@ -667,6 +795,7 @@ function ShopForm({
     Object.keys(initialDateOv).length > 0,
   );
   const [dateOv, setDateOv] = useState<DateOverrides>(initialDateOv);
+  const [formErr, setFormErr] = useState<string | null>(null);
   const setDateOverride = (date: string, override: DateOverride | null) =>
     setDateOv((prev) => {
       const next = { ...prev };
@@ -704,6 +833,14 @@ function ShopForm({
       return next;
     });
   const submit = () => {
+    // 時刻が欠けた特別営業は保存時に捨てられてしまうので、先に止めて知らせる。
+    if (useDateOv) {
+      for (const [date, ov] of Object.entries(dateOv).sort()) {
+        const msg = ov?.type === "custom" ? customHoursError(ov) : null;
+        if (msg) return setFormErr(`${formatJpDate(date)}：${msg}`);
+      }
+    }
+    setFormErr(null);
     const fd = new FormData();
     if (initial) fd.set("id", String(initial.id));
     Object.entries(f).forEach(([k, v]) => fd.set(k, String(v)));
@@ -900,13 +1037,17 @@ function ShopForm({
               onChange={(e) => setUseDateOv(e.target.checked)}
               className="accent-accent"
             />
-            休診日カレンダー（祝日・臨時休診）
+            休診日・特別営業日カレンダー（祝日・臨時休診・その日だけの営業時間）
           </label>
           {useDateOv && (
             <div className="mt-3">
+              <p className="mb-2 text-[11px] leading-relaxed text-faint">
+                複数の店舗に同じ日をまとめて登録するときは、設定の「特別営業日」タブが便利です。
+              </p>
               <DateOverridesCalendar
                 overrides={dateOv}
                 onSet={setDateOverride}
+                defaultHours={{ openTime: f.openTime, closeTime: f.closeTime }}
               />
             </div>
           )}
@@ -954,6 +1095,11 @@ function ShopForm({
           </p>
         </div>
 
+        {formErr && (
+          <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            {formErr}
+          </p>
+        )}
         <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
       </div>
     </Modal>
@@ -963,9 +1109,12 @@ function ShopForm({
 function DateOverridesCalendar({
   overrides,
   onSet,
+  defaultHours,
 }: {
   overrides: DateOverrides;
   onSet: (date: string, override: DateOverride | null) => void;
+  /** 特別営業を選んだときの初期値（店舗の通常の営業時間）。 */
+  defaultHours: { openTime: string; closeTime: string };
 }) {
   const todayYmd = useMemo(() => toLocalDateString(), []);
   const [calMonth, setCalMonth] = useState(todayYmd.slice(0, 7));
@@ -1048,6 +1197,7 @@ function DateOverridesCalendar({
                       {ov && (
                         <span
                           className={`rounded border px-1 text-[9px] leading-tight ${DATE_OV_BADGE[ov.type]}`}
+                          title={describeDateOverride(ov)}
                         >
                           {DATE_OV_LABEL[ov.type]}
                         </span>
@@ -1072,6 +1222,7 @@ function DateOverridesCalendar({
                 ["closed", "全日休"],
                 ["morning", "午前休"],
                 ["afternoon", "午後休"],
+                ["custom", "特別営業"],
               ] as const
             ).map(([type, label]) => {
               const active = selectedOv?.type === type;
@@ -1079,9 +1230,20 @@ function DateOverridesCalendar({
                 <button
                   key={type}
                   type="button"
-                  onClick={() =>
-                    onSet(selected, { type, note: selectedOv?.note })
-                  }
+                  onClick={() => {
+                    if (active) return;
+                    onSet(
+                      selected,
+                      type === "custom"
+                        ? {
+                            type,
+                            note: selectedOv?.note,
+                            openTime: defaultHours.openTime || "09:00",
+                            closeTime: defaultHours.closeTime || "21:00",
+                          }
+                        : { type, note: selectedOv?.note },
+                    );
+                  }}
                   className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
                     active
                       ? "border-accent bg-accent text-accent-fg"
@@ -1103,6 +1265,38 @@ function DateOverridesCalendar({
               通常に戻す
             </button>
           </div>
+          {selectedOv?.type === "custom" && (
+            <div className="space-y-1">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(
+                  [
+                    ["openTime", "営業開始"],
+                    ["closeTime", "営業終了"],
+                    ["breakStart", "休憩開始"],
+                    ["breakEnd", "休憩終了"],
+                  ] as const
+                ).map(([field, label]) => (
+                  <label key={field} className="text-[11px] text-muted">
+                    {label}
+                    <Input
+                      type="time"
+                      value={selectedOv[field] ?? ""}
+                      onChange={(e) =>
+                        onSet(selected, {
+                          ...selectedOv,
+                          [field]: e.target.value || undefined,
+                        })
+                      }
+                      className="mt-0.5 h-8"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-faint">
+                この日だけこの時間で予約枠を作ります（休憩は空欄なら休憩なし）。
+              </p>
+            </div>
+          )}
           {selectedOv && (
             <Input
               placeholder="メモ（任意、最大100文字）"
@@ -1110,7 +1304,7 @@ function DateOverridesCalendar({
               maxLength={100}
               onChange={(e) =>
                 onSet(selected, {
-                  type: selectedOv.type,
+                  ...selectedOv,
                   note: e.target.value || undefined,
                 })
               }
@@ -1120,6 +1314,228 @@ function DateOverridesCalendar({
         </div>
       )}
     </div>
+  );
+}
+
+function SpecialDayForm({
+  shops,
+  initial,
+  onClose,
+  onSubmit,
+  pending,
+}: {
+  shops: ShopRow[];
+  initial?: DateOverrideGroup;
+  onClose: () => void;
+  onSubmit: (fd: FormData) => void;
+  pending: boolean;
+}) {
+  const [date, setDate] = useState(initial?.date ?? "");
+  const [type, setType] = useState<DateOverrideType>(
+    initial?.override.type ?? "custom",
+  );
+  const [hours, setHours] = useState({
+    openTime: initial?.override.openTime ?? "",
+    closeTime: initial?.override.closeTime ?? "",
+    breakStart: initial?.override.breakStart ?? "",
+    breakEnd: initial?.override.breakEnd ?? "",
+  });
+  const [note, setNote] = useState(initial?.override.note ?? "");
+  // 新規は全店舗を選んだ状態から始める（「全店舗この日だけ」が一番多いため）。
+  const [shopIds, setShopIds] = useState<number[]>(
+    initial?.shopIds ?? shops.map((s) => s.id),
+  );
+  const [formErr, setFormErr] = useState<string | null>(null);
+  const allSelected = shops.every((s) => shopIds.includes(s.id));
+  const typeHint = SPECIAL_DAY_TYPES.find((t) => t.type === type)?.hint;
+
+  // 選んだ日に、この登録とは別の設定がすでに入っている店舗（保存すると上書きされる）。
+  const conflicts = useMemo(() => {
+    if (!date) return [];
+    return shops.flatMap((s) => {
+      if (!shopIds.includes(s.id)) return [];
+      if (initial && initial.date === date && initial.shopIds.includes(s.id))
+        return [];
+      const ov = parseDateOverrides(s.dateOverrides)[date];
+      return ov ? [`${s.name}（${describeDateOverride(ov)}）`] : [];
+    });
+  }, [date, shopIds, shops, initial]);
+
+  const toggleShop = (id: number) =>
+    setShopIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  const submit = () => {
+    if (!date) return setFormErr("日付を選んでください");
+    if (shopIds.length === 0) return setFormErr("対象の店舗を選んでください");
+    if (type === "custom") {
+      const msg = customHoursError(hours);
+      if (msg) return setFormErr(msg);
+    }
+    setFormErr(null);
+    const fd = new FormData();
+    fd.set("date", date);
+    fd.set("type", type);
+    if (type === "custom") {
+      Object.entries(hours).forEach(([k, v]) => fd.set(k, v));
+    }
+    fd.set("note", note);
+    fd.set("shopIds", JSON.stringify(shopIds));
+    if (initial) {
+      fd.set("prevDate", initial.date);
+      fd.set("prevShopIds", JSON.stringify(initial.shopIds));
+    }
+    onSubmit(fd);
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "特別営業日を編集" : "特別営業日を追加"}
+    >
+      <div className="space-y-4">
+        <Field label="日付">
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </Field>
+
+        <div>
+          <Label>種類</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {SPECIAL_DAY_TYPES.map((t) => (
+              <button
+                key={t.type}
+                type="button"
+                onClick={() => setType(t.type)}
+                className={`rounded-lg border px-3 py-2 text-xs transition-colors ${
+                  type === t.type
+                    ? "border-accent bg-accent text-accent-fg"
+                    : "border-line text-muted hover:border-accent/60 hover:text-accent"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {typeHint && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+              {typeHint}
+            </p>
+          )}
+        </div>
+
+        {type === "custom" && (
+          <div className="rounded-xl border border-line bg-base/40 p-3">
+            <p className="mb-2 text-xs font-medium text-muted">
+              この日の営業時間
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="営業開始">
+                <Input
+                  type="time"
+                  value={hours.openTime}
+                  onChange={(e) =>
+                    setHours({ ...hours, openTime: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="営業終了">
+                <Input
+                  type="time"
+                  value={hours.closeTime}
+                  onChange={(e) =>
+                    setHours({ ...hours, closeTime: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="休憩開始（任意）">
+                <Input
+                  type="time"
+                  value={hours.breakStart}
+                  onChange={(e) =>
+                    setHours({ ...hours, breakStart: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="休憩終了（任意）">
+                <Input
+                  type="time"
+                  value={hours.breakEnd}
+                  onChange={(e) =>
+                    setHours({ ...hours, breakEnd: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-faint">
+              休憩が空欄ならその日は休憩なしです。いつもの営業時間・休憩は使いません。
+              すでに入っている予約は時間外でもそのまま残ります。
+            </p>
+          </div>
+        )}
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wider text-muted">
+              対象の店舗
+            </span>
+            {shops.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setShopIds(allSelected ? [] : shops.map((s) => s.id))
+                }
+                className="text-xs text-accent hover:underline"
+              >
+                {allSelected ? "すべて外す" : "全店舗を選ぶ"}
+              </button>
+            )}
+          </div>
+          <div className="space-y-1.5 rounded-xl border border-line bg-base/40 p-3">
+            {shops.map((s) => (
+              <label
+                key={s.id}
+                className="flex items-center gap-2 text-sm text-ink"
+              >
+                <input
+                  type="checkbox"
+                  checked={shopIds.includes(s.id)}
+                  onChange={() => toggleShop(s.id)}
+                  className="accent-accent"
+                />
+                {s.name}
+              </label>
+            ))}
+          </div>
+          {conflicts.length > 0 && (
+            <p className="mt-1.5 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] leading-relaxed text-ink">
+              この日はすでに設定があります。保存すると上書きされます: {conflicts.join("、")}
+            </p>
+          )}
+        </div>
+
+        <Field label="メモ（任意）">
+          <Input
+            value={note}
+            maxLength={100}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="年末特別診療 など"
+          />
+        </Field>
+
+        {formErr && (
+          <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            {formErr}
+          </p>
+        )}
+        <FormFooter onClose={onClose} onSubmit={submit} pending={pending} />
+      </div>
+    </Modal>
   );
 }
 

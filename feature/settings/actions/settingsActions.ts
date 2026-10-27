@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { db } from "@/helper/lib/db";
 import { getCurrentUser } from "@/helper/lib/auth";
 import { getActiveBrandId, getActiveShopId } from "@/helper/lib/shop-context";
@@ -12,13 +13,17 @@ import {
   menuSchema,
   visitSourceSchema,
   cardColorPresetSchema,
+  specialDaySchema,
 } from "@/feature/settings/schema/settingsSchema";
 import {
   parseHoursByDow,
   serializeHoursByDow,
   parseDateOverrides,
   serializeDateOverrides,
+  editDateOverrides,
+  type DateOverride,
 } from "@/helper/utils/shopHours";
+import { isYmd } from "@/helper/utils/pointCampaign";
 import { parseWorkDates, serializeWorkDates } from "@/helper/utils/staffWork";
 import { parseStaffIds } from "@/helper/utils/menuStaff";
 
@@ -153,6 +158,98 @@ export async function deleteShop(id: number): Promise<ActionResult> {
     });
   } catch {
     return fail("削除に失敗しました");
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+/* ---------------- Special days（特別営業日・臨時休診） ---------------- */
+
+/**
+ * 特別営業日・臨時休診を、選んだ店舗にまとめて登録・変更する。
+ * 各店舗の dateOverrides（日付ごとの設定）に書き込むので、店舗の編集画面の
+ * カレンダーにも同じ内容が出る。編集のときは、元の日付の設定を元の対象店舗から
+ * 消してから入れ直す（日付の変更・対象から外した店舗に古い設定が残らないように）。
+ */
+export async function saveSpecialDay(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  const parsed = specialDaySchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+  const input = parsed.data;
+  const brandId = await getActiveBrandId();
+
+  const override: DateOverride = { type: input.type };
+  if (input.type === "custom") {
+    override.openTime = input.openTime;
+    override.closeTime = input.closeTime;
+    if (input.breakStart && input.breakEnd) {
+      override.breakStart = input.breakStart;
+      override.breakEnd = input.breakEnd;
+    }
+  }
+  if (input.note) override.note = input.note;
+
+  const setIds = new Set(input.shopIds);
+  const prevIds = new Set(input.prevDate ? (input.prevShopIds ?? []) : []);
+  return updateShopDateOverrides(
+    brandId,
+    [...new Set([...setIds, ...prevIds])],
+    input.shopIds,
+    (shopId) => ({
+      remove: prevIds.has(shopId) ? input.prevDate : null,
+      set: setIds.has(shopId) ? { date: input.date, override } : null,
+    }),
+  );
+}
+
+/** 特別営業日・臨時休診の登録を、指定した店舗から消す（その日は通常の営業時間に戻る）。 */
+export async function deleteSpecialDay(
+  date: string,
+  shopIds: number[],
+): Promise<ActionResult> {
+  if (!(await requireAuth())) return fail("未認証です");
+  if (!isYmd(date)) return fail("日付が正しくありません");
+  const ids = [...new Set(shopIds)].filter((n) => Number.isInteger(n) && n > 0);
+  if (ids.length === 0) return fail("店舗が見つかりません");
+  const brandId = await getActiveBrandId();
+  return updateShopDateOverrides(brandId, ids, [], () => ({ remove: date }));
+}
+
+/**
+ * 複数店舗の dateOverrides を読み→書き換え→保存する。required の店舗がブランド内に
+ * 1つでも無ければ何も書かずに失敗を返す。
+ */
+async function updateShopDateOverrides(
+  brandId: number,
+  shopIds: number[],
+  required: number[],
+  change: (shopId: number) => Parameters<typeof editDateOverrides>[1],
+): Promise<ActionResult> {
+  if (shopIds.length === 0) return fail("店舗が見つかりません");
+  try {
+    const missing = await db.$transaction(async (tx) => {
+      // 同じ店舗の設定を同時に書き換えたとき、片方の変更が消えないように行ロックを取る。
+      await tx.$queryRaw`SELECT "id" FROM "Shop" WHERE "id" IN (${Prisma.join(shopIds)}) AND "brandId" = ${brandId} FOR UPDATE`;
+      const shops = await tx.shop.findMany({
+        where: { id: { in: shopIds }, brandId, deletedAt: null },
+        select: { id: true, dateOverrides: true },
+      });
+      if (required.some((id) => !shops.some((s) => s.id === id))) return true;
+      for (const shop of shops) {
+        await tx.shop.update({
+          where: { id: shop.id },
+          data: { dateOverrides: editDateOverrides(shop.dateOverrides, change(shop.id)) },
+          select: { id: true },
+        });
+      }
+      return false;
+    });
+    if (missing) return fail("店舗が見つかりません");
+  } catch {
+    return fail("保存に失敗しました。時間をおいて再度お試しください");
   }
   revalidateAll();
   return { ok: true };
