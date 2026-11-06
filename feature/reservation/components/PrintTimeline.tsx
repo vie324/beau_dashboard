@@ -215,9 +215,10 @@ export function PrintTimeline({
           .print-root {
             padding: 0 !important;
             max-width: none !important;
-            /* カラーの帯/カードを白黒で読みやすく */
-            filter: grayscale(100%);
-            /* グリッド線や淡い背景塗りも紙に出るように */
+            /* 予約画面で付けたカードの背景色 (cardColor) を紙/PDF にも出すため、
+               グレースケール化はしない。白黒プリンタでは淡い色が既定のカード色と
+               ほぼ同じ濃さになるので、色付きカードには太い左帯を付けて区別する。
+               グリッド線や淡い背景塗りも紙に出るように */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -454,15 +455,33 @@ export function PrintTimeline({
                   //   3枠以上 : 時刻/名前/メニュー/メモ
                   const compact = height < cellPx * 1.4;
                   const showMenu = !!menuName && height >= cellPx * 2.4;
+                  // 予約画面で付けた背景色を引き継ぐ。キャンセル済みは従来どおり
+                  // 灰色＋取り消し線のままにして、有効な予約と見間違えないようにする。
+                  const tint = !cancelled ? r.cardColor?.trim() || null : null;
                   return (
                     <div
                       key={r.id}
                       className={`absolute overflow-hidden rounded border px-1 py-0.5 text-[9px] leading-tight ${
                         cancelled
                           ? "border-ink/40 bg-elevated text-faint line-through"
-                          : "border-ink/70 bg-[#dfd9c8] text-ink"
+                          : tint
+                            ? "border-ink/70 text-ink"
+                            : "border-ink/70 bg-[#dfd9c8] text-ink"
                       }`}
-                      style={{ top, height, left: leftStyle, width: widthStyle }}
+                      style={{
+                        top,
+                        height,
+                        left: leftStyle,
+                        width: widthStyle,
+                        ...(tint
+                          ? {
+                              background: tint,
+                              // 白黒印刷でも色付きの枠だと分かるように太い左帯を付ける。
+                              borderLeftWidth: 4,
+                              borderLeftColor: "rgba(0,0,0,0.75)",
+                            }
+                          : {}),
+                      }}
                     >
                       {compact ? (
                         // 15分枠。1行目=時刻、2行目=患者No、3行目以降=名前(+メモ)。
@@ -500,7 +519,11 @@ export function PrintTimeline({
                           </div>
                           <div className="break-words font-medium">{name}</div>
                           {showMenu && (
-                            <div className="break-words text-[8px] text-muted">
+                            <div
+                              className={`break-words text-[8px] ${
+                                tint ? "text-ink/80" : "text-muted"
+                              }`}
+                            >
                               {menuName}
                             </div>
                           )}
