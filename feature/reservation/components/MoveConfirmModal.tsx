@@ -20,9 +20,19 @@ export type MoveTarget = {
   date: string;
   newStartMin: number;
   newStaffId: number | null;
-  newStaffName: string;
-  newStaffColor: string | null;
+  /** 移動後の設備。設備列に落としたときはその設備、それ以外は元のまま。 */
+  newEquipmentId: number | null;
+  /** 移動先の列名・色（スタッフ名または設備名）。 */
+  newColName: string;
+  newColColor: string | null;
 };
+
+/** 予約が今どの列にいるか（スタッフ名 / 設備名 / 指名なし）。 */
+function currentColName(row: ReservationRow): string {
+  if (row.staffId != null) return row.staff?.name ?? "担当スタッフ";
+  if (row.equipmentId != null) return row.equipment?.name ?? "設備";
+  return "指名なし";
+}
 
 /**
  * カレンダー上で予約カードをドラッグして離した後、移動内容を確認するモーダル。
@@ -45,20 +55,29 @@ export function MoveConfirmModal({
 
   if (!target) return null;
 
-  const { row, date, newStartMin, newStaffId, newStaffName, newStaffColor } =
-    target;
+  const {
+    row,
+    date,
+    newStartMin,
+    newStaffId,
+    newEquipmentId,
+    newColName,
+    newColColor,
+  } = target;
   const fromStartMin = jstMinutesOfDay(new Date(row.startAt));
   const fromEndMin = jstMinutesOfDay(new Date(row.endAt));
   const duration = Math.max(15, fromEndMin - fromStartMin);
   const newEndMin = newStartMin + duration;
-  const fromStaffName = row.staff?.name ?? "指名なし";
+  const fromColName = currentColName(row);
+  const equipmentChanged = (newEquipmentId ?? null) !== (row.equipmentId ?? null);
   const subject =
     row.kind === "block"
       ? (row.blockLabel ?? "時間ブロック")
       : (row.customer?.name ?? row.guestName ?? "（名称未設定）");
   const unchanged =
     newStartMin === fromStartMin &&
-    (newStaffId ?? null) === (row.staffId ?? null);
+    (newStaffId ?? null) === (row.staffId ?? null) &&
+    !equipmentChanged;
 
   const submit = () => {
     setError(null);
@@ -73,11 +92,21 @@ export function MoveConfirmModal({
             ? row.staff
             : {
                 id: newStaffId,
-                name: newStaffName,
+                name: newColName,
                 // ReservationRow.staff.color は schema 上 non-null (default あり)。
                 // 列ヘッダの color が落ちている場合の保険でデフォルトに揃える。
-                color: newStaffColor ?? "#a9803f",
+                color: newColColor ?? "#a9803f",
               },
+      equipmentId: newEquipmentId,
+      equipment: !equipmentChanged
+        ? row.equipment
+        : newEquipmentId == null
+          ? null
+          : {
+              id: newEquipmentId,
+              name: newColName,
+              color: newColColor ?? "#a9803f",
+            },
       startAt: new Date(new Date(row.startAt).getTime() + deltaMs),
       endAt: new Date(new Date(row.endAt).getTime() + deltaMs),
     };
@@ -88,6 +117,10 @@ export function MoveConfirmModal({
         date,
         startTime: minToTime(newStartMin),
         staffId: newStaffId,
+        equipmentId:
+          equipmentChanged && newEquipmentId != null
+            ? newEquipmentId
+            : undefined,
       });
       if (res.ok) {
         onClose();
@@ -109,13 +142,19 @@ export function MoveConfirmModal({
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 rounded-lg border border-line bg-base/40 px-4 py-3 text-ink">
           <span className="text-faint">変更前</span>
           <span className="tabular-nums">
-            {minToTime(fromStartMin)}–{minToTime(fromEndMin)}（{fromStaffName}）
+            {minToTime(fromStartMin)}–{minToTime(fromEndMin)}（{fromColName}）
           </span>
           <span className="text-faint">変更後</span>
           <span className="tabular-nums font-semibold">
-            {minToTime(newStartMin)}–{minToTime(newEndMin)}（{newStaffName}）
+            {minToTime(newStartMin)}–{minToTime(newEndMin)}（{newColName}）
           </span>
         </div>
+
+        {equipmentChanged && row.kind !== "block" && row.menu && (
+          <p className="rounded-md border border-line bg-elevated/40 px-3 py-2 text-xs text-muted">
+            メニュー（{row.menu.name}）はそのままです。変更する場合は、移動後に予約を開いてメニューを選び直してください。
+          </p>
+        )}
 
         {unchanged && (
           <p className="rounded-md border border-line bg-elevated/40 px-3 py-2 text-xs text-muted">

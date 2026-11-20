@@ -12,6 +12,7 @@ import {
   statusMeta,
 } from "@/helper/utils/status";
 import { staffWorksOn } from "@/helper/utils/staffWork";
+import { keepsEquipmentOnEdit } from "@/helper/utils/reservationMove";
 import {
   appointmentSchema,
   timeBlockSchema,
@@ -123,8 +124,19 @@ async function upsert(
   const endAt = addMinutes(startAt, input.durationMin);
 
   // メニューから設備指定 (equipmentId) を引いて、予約時にも空き判定を行う。
+  // ただし編集でメニューを変えていなければ今の設備を残す（ドラッグで
+  // EXFIT①→EXFIT② のように別の設備へ移した予約が、メモ等の保存で元の
+  // 設備に戻らないように）。
   let equipmentId: number | null = null;
-  if (input.menuId) {
+  const current = input.id
+    ? await db.appointment.findFirst({
+        where: { id: input.id, shopId, deletedAt: null },
+        select: { menuId: true, equipmentId: true },
+      })
+    : null;
+  if (current && keepsEquipmentOnEdit(current, input.menuId)) {
+    equipmentId = current.equipmentId;
+  } else if (input.menuId) {
     const menu = await db.menu.findFirst({
       where: { id: input.menuId, deletedAt: null },
       select: { equipmentId: true },
@@ -691,7 +703,7 @@ export async function getCustomerLastNote(
 }
 
 /**
- * 既存の予約 (または時間ブロック) を、長さを変えずに別の時刻/担当へ移動する。
+ * 既存の予約 (または時間ブロック) を、長さを変えずに別の時刻/担当/設備へ移動する。
  * カレンダー上のドラッグ&ドロップ操作のためのエンドポイント。
  * メニュー・顧客などその他の項目は触らない (細かな編集はモーダルから)。
  */
@@ -701,6 +713,8 @@ export async function moveReservation(input: {
   startTime: string; // HH:mm
   // 移動先列のスタッフID。undefined なら据え置き、null は「指名なし」へ。
   staffId?: number | null;
+  // 移動先の設備ID（設備列に落としたとき）。undefined なら据え置き。
+  equipmentId?: number;
 }): Promise<ActionResult> {
   if (!(await getCurrentUser())) return { ok: false, error: "未認証です" };
   const shopId = await getActiveShopId();
@@ -726,6 +740,17 @@ export async function moveReservation(input: {
   const newStaffId =
     input.staffId === undefined ? existing.staffId : input.staffId;
 
+  let newEquipmentId = existing.equipmentId;
+  if (input.equipmentId !== undefined && input.equipmentId !== existing.equipmentId) {
+    // 画面の列は自店舗の設備だけだが、送信値は信用せず所属を確かめる。
+    const equipment = await db.equipment.findFirst({
+      where: { id: input.equipmentId, shopId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!equipment) return { ok: false, error: "移動先の設備が見つかりません" };
+    newEquipmentId = equipment.id;
+  }
+
   if (newStaffId) {
     const avail = await checkStaffAvailability({
       shopId,
@@ -738,10 +763,10 @@ export async function moveReservation(input: {
       return { ok: false, error: "移動先の時間帯に別の予約があります" };
     }
   }
-  if (existing.equipmentId) {
+  if (newEquipmentId) {
     const avail = await checkEquipmentAvailability({
       shopId,
-      equipmentId: existing.equipmentId,
+      equipmentId: newEquipmentId,
       startAt: newStartAt,
       endAt: newEndAt,
       excludeAppointmentId: input.id,
@@ -754,7 +779,12 @@ export async function moveReservation(input: {
   try {
     await db.appointment.update({
       where: { id: input.id },
-      data: { startAt: newStartAt, endAt: newEndAt, staffId: newStaffId },
+      data: {
+        startAt: newStartAt,
+        endAt: newEndAt,
+        staffId: newStaffId,
+        equipmentId: newEquipmentId,
+      },
     });
   } catch {
     return { ok: false, error: "保存に失敗しました" };

@@ -20,6 +20,7 @@ import {
   MoveConfirmModal,
   type MoveTarget,
 } from "@/feature/reservation/components/MoveConfirmModal";
+import { resolveDropAssignment } from "@/helper/utils/reservationMove";
 import type { ReservationRow } from "@/feature/reservation/services/getReservations";
 import type { ShopHours } from "@/feature/reservation/services/getShopHours";
 import type { ReservationOptimisticAction } from "@/feature/reservation/types/optimistic";
@@ -429,16 +430,18 @@ export function ReservationBoard({
                 },
               })
             }
-            onCardDrop={(row, newStartMin, col) =>
+            onCardDrop={(row, newStartMin, col) => {
+              const next = resolveDropAssignment(row, col);
               setMoveTarget({
                 row,
                 date,
                 newStartMin,
-                newStaffId: col.staffId,
-                newStaffName: col.name,
-                newStaffColor: col.color ?? null,
-              })
-            }
+                newStaffId: next.staffId,
+                newEquipmentId: next.equipmentId,
+                newColName: col.name,
+                newColColor: col.color ?? null,
+              });
+            }}
           />
         </div>
       )}
